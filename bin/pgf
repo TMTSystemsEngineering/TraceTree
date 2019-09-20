@@ -1,0 +1,310 @@
+#!/usr/bin/perl
+use English ;
+use FileHandle ;
+
+require "fileutils.pl" ;
+require "miscutils.pl" ;
+
+$TRUE = 1 ;
+$FALSE = 0 ;
+
+$shorthelpmessage = <<"SEOH";
+Usage:
+  pgf [option switches] [-r irs] [-e] searchstring [[-f] filename... | -fe fileregexp]
+SEOH
+
+$usableshorthelpmessage = <<"USEOH";
+$shorthelpmessage
+Where the option switches (which may be combined, e.g. '-il') are:
+  -h -H -i -l -n -v -p
+Try 'pgf -help' for detailed help, or 'pgf -qh' to repeat this message.
+USEOH
+
+$helpmessage = <<"EOH";
+$shorthelpmessage
+
+Where [defaults in square brackets]:
+  searchstring     is a Perl-style regular expression [no default].
+  filename...      yuck what is this
+                   or recursive file search].
+
+  -e searchstring  next argument is the search string (see Note 1).
+  -f afilename     next argument is a filename (see Note 1).
+  -r irs           irs is the input_record_separator, following same 
+                   rules as Perl (see perlvar(1)).
+
+And option switches are:
+  -h     Do not display filenames [do if there are more than one].
+  -H     Do display filenames [don't if there's only one].
+  -i     ignore case in search [do case sensitive search] .
+  -l     list only the name of each file found to match the target 
+         searchstring [list each line found].
+  -n     number the lines on output [don't].
+  -v     reverse the sense of the search; i.e., print only 
+         those lines (or list only those files) that do not 
+         match the search string [don't].
+  -V     verbose - list to stderr which files will be searched
+  -R     IS DEFAULT NOT AN OPTION Recursively descend the directory structure looking for text 
+         files (as defined by perl -T file test) in which to search.  If 
+         any files are specified on the command line, descend only those 
+         directories listed among the command line files.  If no files 
+         are specified on the command line, descend starting at the 
+         current directory [don't]. 
+  -p Search in all plain (as defined b perl -f file test) in addition to 
+         text files [text files only].
+
+Notes:
+
+1)  Two situations: 
+
+    A)  YUCK If you don't specify files explicitly or by means of the -R 
+        switch, standard input is used.  
+
+    B)  YUCK If you do specify files or use -R, files are first tested to see 
+        if they are text (the default) or at least plain files (both as 
+        defined by Perl).  If nothing is left after the test, pgf 
+        silently exits. 
+
+2)  The -e and -f options are useful if the searchstring or any filename 
+    begins with a dash. Otherwise, the searchstring is assumed to be the 
+    first argument with no dash in front of it, and all subsequent 
+    dashless arguments are input file names. 
+
+3)  The searchstring will often need to be single-quoted to avoid the 
+    shell trying to interpret it. 
+
+4)  Remember also that perl regular expressions attach meaning to 
+    certain characters.  Sometimes these characters act silently, other 
+    times they result in error reports.  E.g., the searchstring '+' 
+    results in this error message: 
+
+  /+/: ?+* follows nothing in regexp at pgf line 119, <INPUT> line 1.
+
+    In csh, you need to specify a search for a '+' character in either 
+    of (at least) two ways:
+
+      pgf \\+ filename 
+      pgf '\+' filename
+
+5)  The OPTION switches listed above may be grouped together, e.g. 
+
+      pgf -li string filename
+
+6)  pgf silently skips directories found in the list of files. 
+1)  INPUT RECORD SEPARATORS (see perlvar(1) for meanings of these): 
+
+    A)  To specifiy a null input record separator use this syntax: 
+
+      pgf -r '' blah blah
+
+    B)  To specify a double (or other multiple) newline use this: 
+
+      pgf -r '\n\n' blah blah
+
+    C)  Other special characters sequences supported are: \t, \r, and 
+        \f. 
+    D)  If the input record separator contains no newlines, a newline 
+        will be appended to any printed lines for clarity. 
+
+8)  DIFFERENCES BETWEEN pgf AND grep/egrep/fgrep.  See grep(1). 
+    A)  pgf does not currently support the flags -b, -c, -s, -x, and 
+        -w.  I'll add them if I need them. 
+    B)  pgf adds the switch -H to complement -h. 
+    C)  pgf's -f switch is NOT the same as grep's -f. 
+    D)  pgf's -v and -l switches interact in a much more sensible 
+        manner (IMHO) than for grep.  The result of 'grep -vl' is to 
+        list every file, unless there's a file for which EVERY line 
+        matches the search.  pgf, by contrast, lists the file if there 
+        are NO matches found at all. 
+    E)  pgf's format for listing filenames and numbers is more rigid.  
+        While it is colon-delimited, it uses a fixed number of columns 
+        for each of the fields (the filename field width depends on the 
+        length of the largest filename), pads the fields on the left 
+        with whitespaces as necessary, and always puts one space after 
+        each colon. 
+
+EOH
+
+while (@ARGV)
+{
+  $_ = shift ;
+  if (/^-he/) { printhelpandexit($helpmessage) ; }
+  if (/^-qh/) { printhelpandexit($usableshorthelpmessage) ; }
+  elsif ($_ eq "-f") { push @filelist, shift ; }
+  elsif ($_ eq "-e") { $searchstring = shift ; }
+  elsif ($_ eq "-r") { $irs = shift ; }
+  elsif ($_ eq "-fe") { $fregexp = shift ; }
+  elsif (/^-/) 
+  { 
+    # get rid of each letter as it appears...
+    $g++ if s/H//g ;
+    $noprintfilenames++ if s/h//g ;
+    $ignorecase++       if s/i//g ;
+    $dolistonly++       if s/l//g ;
+    $dolinenum++        if s/n//g ;
+    $doreverse++        if s/v//g ;
+    $doplainfiles++     if s/p//g ;
+    $doverbose++        if s/V//g ;
+
+    # At this point there should be nothing left of the flag options
+    printhelpandexit ($usableshorthelpmessage, "Undefined option(s): $_") 
+      if $_ ne '-' ; 
+  }
+  elsif (!defined ($searchstring)) { $searchstring = $_ ; }
+  else
+  {
+    push @filelist, $_ ;
+  }
+}
+
+printhelpandexit ($usableshorthelpmessage, "No search string defined") 
+  if !defined ($searchstring) ;
+
+if (@filelist) # then we only want to look down those listed
+{
+  @dirlist = grep -d, @filelist ;
+  @filelist = grep -f, @filelist ; # start out with plain files at 
+                                   # this level that might have been 
+                                   # specified on the command line 
+  foreach $dirname (@dirlist)
+  {
+    push (@filelist, getfilelistrecursive ($dirname)) ;
+  }
+}
+else     # @filelist started out empty
+{
+  print STDERR "Getting list of files..." if $doverbose ;
+  @filelist = getfilelistrecursive (".") ; 
+  print STDERR " found " . scalar (@filelist) . "\n" if $doverbose ;
+}  
+
+if (defined $fregexp)
+{
+  print STDERR "Filtering by regular expression '$fregexp'..." if $doverbose ;
+  @filelist = grep (/$fregexp/, @filelist) if defined $fregexp ;
+  print STDERR " retained " . scalar (@filelist) . "\n" if $doverbose ;
+}
+# Get rid of non-Text or non-plain files, as specified
+if (@filelist)    # still might be empty
+{
+  print STDERR "Getting rid of non-text or non-plain files..." if $doverbose ;
+  @filelist = $doplainfiles ? (grep -f, @filelist) : (grep -T, @filelist) ;
+  print STDERR " retained " . scalar (@filelist) . "\n" if $doverbose ;
+}
+
+if (!@filelist and $doverbose)
+{
+  print STDERR "No files found\n" if !@filelist ;
+}
+exit 0 if !@filelist;
+
+if ($doprintfilenames or (!$noprintfilenames and scalar (@filelist) > 1))
+{
+  foreach (@filelist) { $maxlength = length $_ if length $_ > $maxlength; }
+  $filefmt = "% ${maxlength}s" ;
+  $doprintfilenames++ ;
+}
+
+# use embedded pattern-match modifier.
+$searchstring = "(?i)$searchstring" if ($ignorecase) ;
+
+if (defined $irs)
+{
+  $irs =~ s/\\n/\n/g ;
+  $irs =~ s/\\t/\t/g ;
+  $irs =~ s/\\f/\f/g ;
+  $irs =~ s/\\r/\r/g ;
+  $doextranl = ($irs !~ /\n/ and $irs ne '') ;
+}
+
+$nfiles = scalar @filelist ;
+$ifile = 0 ;
+foreach $infilename (@filelist)
+{
+  next if ( -d $infilename ) ;
+  $ifile++ ;
+  print STDERR "$ifile/$nfiles:\t$infilename\r" if $doverbose;
+  $result = open (INPUT, $infilename) ;
+  if (!$result)
+  {
+    warn "Couldn't open $infilename for reading: $ERRNO\n" ;
+    next ;
+  }
+  input_record_separator INPUT "$irs" if defined $irs ;
+
+  $foundone = $FALSE ;
+  while (<INPUT>)
+  {
+    $line = "" ;
+    if (/$searchstring/o)  # let's try the compile-once option
+    {
+      $foundone = $TRUE ;
+      if (!$dolistonly)
+      {
+	if (!$doreverse)
+	{
+	  # MATCH, normal case
+
+	  $line = sprintf "$filefmt: ", $infilename if $doprintfilenames ;
+	  $line .= sprintf "%5d: ", $INPUT_LINE_NUMBER if $dolinenum;
+	  $line .= $_ ;
+	  # $line .= "\n" if $doextranl ;
+	  $line .= "\n" if substr ($line, -1) ne "\n" ;
+	}
+      }
+      else
+      {
+	# MATCH, doing listonly
+	last ; # $foundone already set TRUE, and we don't want to read 
+               # the whole file if we've already determined that we have 
+               # a match 
+      }
+    }
+    else
+    {
+      # This line doesn't match
+      if ($doreverse and !$dolistonly)
+      {
+	# NOT a match, NOT listonly, REVERSE sense
+	$line = sprintf "$filefmt: ", $infilename if $doprintfilenames ;
+	$line .= sprintf "%5d: ", $INPUT_LINE_NUMBER if $dolinenum;
+	$line .= $_ ;
+	$line .= "\n" if $doextranl ;
+      }
+    }
+    push @lines, $line if $line ne "" ;
+  }
+
+} 
+continue 
+{
+  close (INPUT) ;
+  # Remember to take care of listonly case:
+  if ($dolistonly) 
+  {
+    if ($foundone != $doreverse)
+    {
+      print "$infilename\n" ;
+    }
+  }
+}
+
+# If we've collected lines for printing, let's see if they need to have their front ends whacked off.
+if (@lines and $doprintfilenames)
+{
+  # Yes, so we find out the least number of spaces at the beginning
+  $nspaces = 10000000 ; # ridiculous
+  foreach (@lines)
+  {
+    /^( *)/ ;
+    $hspace = $1 ;
+    $hlen = length ($hspace) ;
+    $nspaces = $hlen < $nspaces ? $hlen : $nspaces ;
+    last if $nspaces == 0 ;    # no point in searching further
+  }
+  if ($nspaces)
+  {
+    foreach (@lines) { s/^ {$nspaces}// ; }
+  }
+}
+print @lines if @lines ;

@@ -1,0 +1,468 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+
+use XML::Simple;
+use DB_File ;
+
+require "fileutils.pl" ;
+require "ttutils.pl" ;
+require "tt_projuniq.pl" ;
+require "xmlutils.pl" ;
+
+# For the special-purpose verification approach map
+$vapattrname1 = '[STDV] Verif Approach' ;
+$vapattrname2 = 'Verif Approach' ;
+
+$rootpathname = "/Users/jgrimes/Desktop/VPCShare" ;
+$rootdirname = "ttr" ;
+if (@ARGV) 
+{ 
+  $pname = $ARGV[0] ;
+  $rootdirname = "$rootdirname/$pname" ; 
+}
+else { die "Usage:\n  $0 projectname\n" ; }
+# $doNotVap = ($pname eq "DSN" or $pname eq "SES_JUNO") ;
+print "$0: doing $rootdirname\n" ;
+($doNotVap, $doProjID) = getProjectUniq ($pname) ;
+
+# We need a metrics file
+$metricsdbfile = "LogsAndData/$pname.metrics.db" ;
+tie %metrics, "DB_File", $metricsdbfile, O_RDWR|O_CREAT, 0666, $DB_HASH
+    or die "Cannot open '$metricsdbfile': $!\n" ;
+
+
+# $datesfilename = "LogsAndData/$pname.dates" ;
+# open D, "> $datesfilename"
+  # or die "Couldn't open $datesfilename for writing: $!\n" ;
+
+@nodelist = getnodelist ($pname) ;
+########################################################################
+# First we need to get rid of old nodes in the metrics file.  Recast   #
+# nodes in an hash, then go through the metrics hash testing each      #
+# one.                                                                 #
+########################################################################
+foreach $node (@nodelist) { $exists{$node}++ ; }
+foreach $node (keys %metrics)
+{
+  unless($exists{$node}) { delete $metrics{$node} ; }
+}
+undef %exists ;  # don't need anymore
+
+$count = 0 ;
+$updatedcount = 0 ;
+$nxmls = scalar @nodelist ;
+foreach $node (@nodelist)
+{
+  $xmlfilename = $node . ".xml" ;
+  $attrfilename = $node . ".attr" ;
+  $perttxtfilename = $node . ".perttxt" ;    # "Pertinent Text" will include 
+                                             # obj, shrt, vap, projid
+      
+##############
+# FOR NOW, WE JUST ADD THE perttxt FILE and leave objtxt, shrttxt, and vaptxt 
+# intact.  Later we'll get rid of the latter three.
+# NOW, we're adding everything to perttxt, even if it's not yet used
+################
+
+  if (targetNeedsUpdating ($xmlfilename, $perttxtfilename) 
+    or (targetNeedsUpdating ($attrfilename, $perttxtfilename)))
+  {
+    # get the attributes first - will use immediately
+    if ($doProjID or !$doNotVap)
+    {
+    	%attr = parseattributefile ($attrfilename) ;
+    }
+    
+    unlink $perttxtfilename ;  # no error, might not exist
+    open PERT, "> $perttxtfilename"
+	or die "Couldn't open $perttxtfilename for writing: $!\n" ;
+
+    if ($doProjID)
+    {
+      $attrvalue = "" ;
+      if ( defined ($attr{$doProjID}) )   # $doProjID contains appropriate 
+					  # attrname
+      {
+	$attrvalue = $attr{$doProjID} ;
+      }
+      if ($attrvalue)
+      {
+	$attrvalue =~ s/\n/\\n/gm ; # this should never happen, but ...
+      }
+      print PERT "ProjID:\t$attrvalue\n" ;
+    } 
+  
+    $ref = eval { XMLin($xmlfilename) };
+    if ($@) 
+    { 
+      print STDERR "xml parsing error in $xmlfilename\n" ;
+      print STDERR "$@\n" ; 
+      if ($@ =~ /not well-formed \(invalid token\) at line (\d+), column (\d+),/s)
+      {
+        $errlinenumber = $1 ;
+        $errcolnumber = $2 ;
+        reporterrorinxml ($xmlfilename, $errlinenumber, $errcolnumber) ;
+      }
+      else
+      {
+        print STDERR "Oh well, some other error syntax\n" ;
+      }
+      exit 1 ;
+    }
+
+    ($moddate, $moddatetype, $mname, $oid, $onum, $pname, $reportdate, 
+     $isheading, $objURL,
+     $isTableHeader, $isTableRow, $isTableCell
+	    ) = gettoplevelattrs ($ref) ;
+    $isTablePart = ($isTableHeader or $isTableRow or $isTableCell) ;
+
+    ####################################################################
+    # Perl, or unix, or Mac OS, who knows, has a bug.  If you open an  #
+    # existing zero-length file for writing, and write zero bytes to   #
+    # it, then close it, its modification time is not changed.  If it  #
+    # was 30 days old when you opened it, it's still 30 days old.  So  #
+    # we have to unlink these files first.  Might slow things down     #
+    # too much.                                                        #
+    ####################################################################
+	
+    $objtxt = '' ;
+    $shrttxt = '' ;
+    $hdrtxt = '' ;
+	
+    if (defined $$ref{"ObjectText"} 
+        and lookinside ($$ref{"ObjectText"})) 
+    { 
+      lookref ($$ref{"ObjectText"}, \$objtxt) ; 
+    }
+    if (defined $$ref{"ObjectShortText"} 
+        and lookinside ($$ref{"ObjectShortText"})) 
+    { 
+      lookref ($$ref{"ObjectShortText"}, \$shrttxt) ; 
+    }
+    if (defined $$ref{"ObjectHeading"} 
+        and lookinside ($$ref{"ObjectHeading"})) 
+    { 
+      lookref ($$ref{"ObjectHeading"}, \$hdrtxt) ; 
+    }
+    if ($objtxt eq '' and $shrtxt eq '' and $hdrtxt eq '' and !$isTablePart) 
+    { 
+      print "$xmlfilename hasn't any text at all\n" ;
+    }
+
+    # ($moddate, $moddatetype, $mname, $oid, $onum, $pname, $reportdate, 
+    # $isheading, $objURL,
+    # $isTableHeader, $isTableRow, $isTableCell
+    # ) = gettoplevelattrs ($ref) ;
+    # $isTablePart = ($isTableHeader or $isTableRow or $isTableCell) ;
+    $isshall = $objtxt =~ /\bshall\b/i ;
+    $metricsstring = "$moddate,$moddatetype,$onum,$isheading,$isTableHeader,"
+                  . "$isTableRow,$isTableCell,$isTablePart,$isshall" ;
+    $metrics{$node} = $metricsstring ;
+    
+    ####################################################################
+    # objtxt file gets objtxt or shrtxt or hdrtxt, in that order of    #
+    # priority.  shrttxt file gets shrttxt or nothing.                 #
+    ####################################################################
+    $objtxttoprint = '' ;
+    if ($objtxt ne '') { $objtxttoprint = $objtxt ; }
+    elsif ($shrttxt ne '') { $objtxttoprint = $shrttxt ; }
+    else { $objtxttoprint = $hdrtxt ; }
+#     print OBJ $objtxttoprint ;
+    print PERT "object text:\t$objtxttoprint\n" ;
+    
+#     print SHRT $shrttxt ;
+    print PERT "short text:\t$shrttxt\n" ;
+ 
+#     close OBJ ;
+#     close SHRT ;
+    $updatedcount++ ;
+    
+    unless ($doNotVap)
+    {
+      #  Now we do the vap txt.  Do we really want to do this for all projects?
+      #  VAP text comes from the '[STDV] Verification Approach' 
+      ####################################################################
+      #  There should be an attr file for each object, so that's OK.     #
+      #  Then we can just search for the <attr>name and then the attr    #
+      #  value.  If there's no such name we don't make the output file.  #
+      #  If there's no value we make an empty file.  otherwise copy the  #
+      #  file.                                                           #
+      ####################################################################
+      ##################################################################
+      # first just get rid of any existing file, since updating seems  #
+      # needed.  That way we don't have any old files left over if     #
+      # there's no value in the current database.                      #
+      ##################################################################
+      unlink $vaptxtfilename ; # no error , don't care
+      $foundinprimary = 0 ;
+      $attrvalue = "" ;
+      if (   defined($attr{$vapattrname1})
+	  or defined($attr{$vapattrname2}))
+      {
+	$attrvalue = $attr{$vapattrname1} ;
+	if ($attrvalue) 
+	{ 
+	  $foundinprimary++ ; 
+	}
+	else 
+	{ 
+	  $attrvalue = $attr{$vapattrname2} ;
+	}
+	################################################################
+	# $attrvalue could easily be multiline, but that's not good    #
+	# for including in dot files, and that's the only place it's   #
+	# going to go.  objtxt and shrttxt are already single line     #
+	# because that's what lookref produces.  We'll have to do it   #
+	# manually here.                                               #
+	################################################################
+      }
+      if ($attrvalue)
+      {
+	$attrvalue =~ s/\n/\\n/gm ;
+	if ($foundinprimary)
+	{ $attrvalue = "STDV vaptxt: $attrvalue" ; }
+	else
+	{ $attrvalue = "Plain vaptxt: $attrvalue" ; }
+      }
+      # Always make the file even if empty.  That way we don't
+      # try every time through.
+#       open VAP, "> $vaptxtfilename"
+# 	  or die "Couldn't open $vaptxtfilename for writing: $!\n" ;
+#       print VAP $attrvalue ;
+      print PERT "VAP text:\t$attrvalue\n" ;  # watch out, attrvalue has 
+					      # two lines
+#       close VAP ;
+    }    # end unless doNotVap
+    
+    close PERT ;
+  }
+
+
+  $count++ ;
+  if ($count%100 == 0) { print STDERR "$0: Done with $count of $nxmls files, $updatedcount updated\r" ; }
+}
+print STDERR "$0: Done with $count of $nxmls files, $updatedcount updated\n" ;
+# untie %md5s 
+untie %metrics ;
+
+sub lookinside
+{
+  my ($v) = @_ ;
+  my ($reftype) = ref $v ;
+  my ($i) ;
+  my ($innerv, $innerk) ;
+  my ($haschunks) = 0 ;
+
+  if ($reftype) 
+  {
+    if ($reftype eq "ARRAY")
+    {
+      for ($i = 0 ; $i < scalar (@$v) ; $i++)
+      {
+	$innerv = $v->[$i] ;
+	return 1 if lookinside ($innerv) ;
+      }
+    }
+    elsif ($reftype eq "HASH")
+    {
+      foreach $innerk (keys %$v)
+      {
+	if ($innerk eq "Chunk")
+	{
+	  $haschunks = 1 ;
+	  last ;
+	}
+	else 
+	{
+	  $innerv = $$v{$innerk} ;
+	  return 1 if lookinside ($innerv) ;
+	}
+      }
+    }
+  }
+  return $haschunks ;
+}
+
+sub lookref
+{
+  my ($v, $resultref) = @_ ;
+  my ($reftype) ;
+  my ($i) ;
+  my ($innerv, $innerk) ;
+  my ($chunkv, $chunkreftype) ;
+  my ($innerchunkv) ;
+
+# print "RAW v=$v\n" ;
+
+  $reftype = ref $v ;
+  if ($reftype) 
+  { 
+    if ($reftype eq "ARRAY")
+    {
+      for ($i = 0 ; $i < scalar (@$v) ; $i++)
+      {
+	$innerv = $v->[$i] ;
+	lookref ($innerv, $resultref) ;
+      }
+    }
+    elsif ($reftype eq "HASH")
+    {
+      foreach $innerk (keys %$v)
+      {
+	if ($innerk eq "Chunk")
+	{
+	  $chunkv = $$v{$innerk} ;
+	  $chunkreftype = ref $chunkv ;
+	  # print "chunk ref type is $chunkreftype\n" ;
+	  if ($chunkreftype eq "ARRAY")
+	  {
+	    for ($i = 0 ; $i < scalar (@$chunkv) ; $i++)
+	    {
+	      $innerchunkv = $chunkv->[$i] ;
+	      # print "CALLING lookatchunk from array value\n" ;
+	      lookatchunk ($innerchunkv, $resultref) ;
+	    }
+	  }
+	  elsif ($chunkreftype eq "HASH")
+	  {
+	    # print "CALLING lookatchunk from hash value\n" ;
+	    lookatchunk ($chunkv, $resultref) ;
+	  }
+	  else { print "HUH????\n" ; }
+	}
+	else 
+	{
+	  $innerv = $$v{$innerk} ;
+	  lookref ($innerv, $resultref) ;
+	}
+      }
+    }
+    else { print "Huh?\n" ; }
+  }
+  else 
+  {
+    # print "-->$v<--" ; 
+  }
+    
+}
+
+sub lookatchunk
+{
+  my ($chunkv, $resultref) = @_ ;
+  my ($k, $v) ;
+  my ($type) ;
+  my ($text) ;
+  my ($filename) ;
+  my ($chunkk) ;
+  my ($bold, $italic, $underline, $strikethru, $superscript, 
+      $subscript, $newline) ;
+  # print "INSIDE CHUNK\n" ;
+  if (ref $chunkv ne "HASH") { print "UH OH CHUNKV not of type HASH\n" ; }
+  else
+  {
+    $type = $$chunkv{"Type"} ;
+    if ($type eq "text")
+    {
+      $text = $$chunkv{"Text"} ;
+      $$resultref .= $text unless
+	      ref ($text) eq "HASH" and scalar (keys %$text) == 0 ;
+    }
+    elsif ($type eq "OLE")
+    {
+      $$resultref .=  "<OLE here>" ;
+    }
+    elsif ($type eq "URL")
+    {
+      $$resultref .=  "<url here>" ;
+    }
+    else {print "UH OH Don't know chunk type $type\n" ; }
+  }
+# print STDERR "   About to return " . ($$resultref) . "\n" ;
+}
+
+sub getchunkattrs 
+{
+  # assume it's a hash
+  my ($ch) = @_ ;
+  # attrs are: 
+  #   bold, italic, underline, strikethru, superscript, subscript, newline
+  # ignore last, charset
+  my ($bold, $italic, $underline, $strikethru, $superscript, 
+      $subscript, $newline) = (0, 0, 0, 0, 0, 0, 0) ;
+  $bold = 1 if defined $$ch{"bold"} and $$ch{"bold"} eq "true" ;
+  $italic  = 1 if defined $$ch{"italic"} and $$ch{"italic"} eq "true" ;
+  $underline = 1 if defined $$ch{"underline"} and $$ch{"underline"} eq "true" ;
+  $strikethru = 1 if defined $$ch{"strikethru"} and $$ch{"strikethru"} eq "true" ;
+  $superscript = 1 if defined $$ch{"superscript"} and $$ch{"superscript"} eq "true" ;
+  $subscript = 1 if defined $$ch{"subscript"} and $$ch{"subscript"} eq "true" ;
+  $newline = 1 if defined $$ch{"newline"} and $$ch{"newline"} eq "true" ;
+
+  return ($bold, $italic, $underline, $strikethru, $superscript, 
+      $subscript, $newline) ;
+}
+
+# SCALAR
+# ARRAY
+# HASH
+# CODE
+# REF
+# GLOB
+# LVALUE
+
+sub reporterrorinxml # ($inxmlname, $errlinenumber, $errcolnumber) ;
+{
+  my ($fname, $lnum, $cnum) = @_ ;
+  local (*ERRXMLIN) ;
+  open ERRXMLIN, $inxmlname 
+      or die "Couldn't open $inxmlname for reading: $!\n" ;
+  print STDERR "ERROR in $inxmlname, line $lnum, column $cnum\n" ;
+  while (<ERRXMLIN>)
+  {
+    if ($. == $lnum)
+    {
+      print STDERR ;
+      print STDERR ('.' x ($cnum-1)) . "^\n" ;
+      $c = substr $_, $cnum, 1 ;
+      print STDERR "ord of character is " . (ord($c)) . "\n" ;
+      last ;
+    }
+  }
+  close ERRXMLIN ;
+}
+
+

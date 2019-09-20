@@ -1,0 +1,3 @@
+#! /usr/bin/perl
+
+print $ENV{'TTT_HOME'} . "\n" ;

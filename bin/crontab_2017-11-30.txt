@@ -1,0 +1,13 @@
+# THIS TEXT FILE IS JUST TO PRESERVE THE crontab since it's easy to 
+#     overwrite it inadvertently
+MAILTO="james.m.grimes@jpl.nasa.gov"
+SHELL=/usr/bin/bash
+TT_ROOT=/data
+TT_TRACE=/data/trace
+TT_TTT=/data/doors-ttt
+TT_BIN=/data/doors-ttt/bin
+TT_DATA=/data/doors-ttt/data
+TT_LOGS=/data/doors-ttt/data/LogsAndData
+TT_TTR=/data/doors-ttt/data/ttr
+5 * * * * $TT_BIN/docronjob
+# * * * * * $TT_BIN/testcronjob

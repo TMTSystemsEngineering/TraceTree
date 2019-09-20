@@ -1,0 +1,407 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+use English ;
+require "miscutils.pl" ;
+
+($progname = $PROGRAM_NAME) =~ s/^.*\/// ;
+
+$noargtests = 'BORTWXbcdfgklopruwxz' ;
+$rangeargtests = 'ACMs' ;
+$activetests = 'BT' ;
+$antiactivetypes = 'bcpt' ;
+
+$noargtestshelp = '-' . join (' -', split ('', $noargtests)) ;
+$rangeargtestshelp = '-' . join (' -', split ('', $rangeargtests)) . "\n" ;
+
+$shorthelpmsg = <<SEOH;
+Usage:
+  $progname [options] [tests] [directories...]
+Try $progname -help for more detailed help.
+SEOH
+
+$helpmessage = <<EOH;
+Usage:
+
+  $progname [options] [tests] [directories...]
+
+$progname searches in the directories named and all their
+subdirectories for files that match _all_ of the specified tests.  If
+no tests are specified, all files match.  If no directories are
+specified, the current working directory is the starting point.
+
+OPTIONS:
+  -a      go down into directories with names beginning with a dot, 
+          i.e., hidden directories.  Default is to skip them.
+  -qm     when printing a pathname add quotes to each end if there's any 
+          whitespace within the pathname.
+  -qbs    when printing a pathname add a backslash before each 
+          whitespace character within the pathname.
+  -open   try opening any non-directories found with the Mac 'open' 
+          command.  Careful with this one - could result in lots of 
+          opens.
+  -oatw     open any non-directories found with TextWrangler.
+  -ls     do an 'ls -ld filename' on any files found, including dirs
+  -delete DANGEROUS delete files that are found.  Will not do 
+          recursively, will not do directories, in fact only plain 
+          files.
+  -wc     print a count only
+  -count  print a count only
+
+TESTS:
+The tests are in three classes: 
+
+1)  tests with no arguments, 
+2)  tests with a range argument, and 
+3)  a regular expression (searchstring) test. 
+
+Tests with no arguments and tests with a range argument are, together, a 
+subset of the file tests supported by Perl.  Please see perlfunc(1) for 
+an explanation of the meaning of each of them.
+
+The tests with no arguments are:
+
+    $noargtestshelp
+
+  They may be strung together in a single argument, e.g. '-fx' .
+
+The tests with a range argument are:
+
+    $rangeargtestshelp 
+
+  They may not be strung together.  Their syntax is:
+
+    -testletter n..m
+
+  where "-testletter" is one of the tests listed above, and "n..m" is a
+  numeric range, where the n and m are integer or decimal (but be careful
+  not to confuse the parser by doing something like "0....2").
+
+  Either the n or the m may be eliminated, but not both.  Thus, if the
+  test is "-s 2000..5000", the file size must be between 2000 and 5000
+  bytes inclusive to pass the test.  "-s ..5000" implies a file less than
+  5001 bytes in length.
+
+  Note that for the file age tests, the age is specified as an integral
+  number of days.
+
+The regular expression test allows for filenames to matched against a 
+search string, which may actually be any valid Perl regular
+expression.  Don't include the regular expression delimiters, such as
+'/'.  The syntax is either of:
+
+  -e regexp
+  -ei regexp
+
+The first indicates a case sensitive test, the second indicates that
+case should be ignored.
+
+  [dirname...]  directories to examine.  ".", the current working
+		directory, is the default.
+
+An example using all three classes is:
+
+  $progname -xB -s 16384.. -e '^x'
+
+which would search the current working directory and all subdirectories
+for an executable, binary file that is larger than 16k bytes and starts
+with the letter 'x' (but not 'X').
+
+EOH
+
+printhelpandexit($helpmessage) if ($ARGV[0] =~ /^-h/) ;
+
+startteststr () ; # we're going to be a routine to eval
+
+while (@ARGV)
+{
+  $_ = shift ;
+  if ($_ eq '-D')    { $debug++ ; }
+  elsif (/^-a/  )    { $doHidden++ ; }
+  elsif (/^-qm/ )    { $doAddQuotes++ ; }
+  elsif (/^-qbs/)    { $doAddBackSlashes++ ; }
+  elsif (/^-open/)   { $doOpen++ ; }
+  elsif (/^-oatw/)   { $doTW++ ; }
+  elsif (/^-ls/)     { $dols++ ; }
+  elsif (/^-delete/) { $doDelete++ ; }
+  elsif (/^-wc/)     { $doCountOnly++ ; }
+  elsif (/^-count/)  { $doCountOnly++ ; }
+  elsif (/^-e/)     # regexp the filename
+  {
+    $isatest++ ;
+    addregexptest (shift, /i/) ;   # regexp is in next arg, -ei ignores case
+  }
+  elsif (/^-/)      # perl/stat file tests
+  {
+    @tlist = split ('', substr ($_, 1)) ;
+    foreach $t (@tlist)
+    {
+      if ($t =~ /[$noargtests]/) 
+      {
+	$isatest++ ;
+	addnoargtest ($t) ;
+      }
+      elsif ($t =~ /[$rangeargtests]/)
+      {
+	$isatest++ ;
+	addoneargtest ($t, shift) ;
+      }
+      else
+      {
+	printhelpandexit ($shorthelpmsg, "Unknown option: -$t") ;
+      }
+    }
+  }
+  else
+  {
+    push (@dirlist, $_) ;
+  }
+}
+
+if ($debug)
+{
+  print STDERR "$0 $debug: doHidden: $doHidden doOpen: $doOpen\n" ;
+}
+
+if ($isatest)   # if there's any test at all, just close off normally
+{
+  $teststr .=<<EOTESTEND;
+  return 1 ;
+}
+EOTESTEND
+}
+else            # but if not, rewrite the teststr to just return 1
+{
+  $teststr = <<EONULLTEST;
+sub test
+{
+  return 1 ;
+}
+EONULLTEST
+}
+
+print "debug: " . join ("\ndebug: ", split ("\n", $teststr)) . "\n" 
+  if $debug ;
+eval $teststr ;
+  die "The test str:\n$teststr\nERROR evaluating teststr: $@\n" if $@;
+
+push (@dirlist, ".") if !@dirlist ;   # default is current dir
+
+$count = 0 ;
+foreach (@dirlist)
+{
+  print `pwd` if $debug ;
+  print "debug: TOP DIR: '$_'\n" if $debug ;
+  if (-l or ! -d _ )
+  {
+    warn "$_ is a link, skipping\n" if -l ;
+    warn "$_ is not a directory, skipping\n" unless -d _ ;
+    next ;
+  }
+  dodir ($_, "$_/") ;
+}
+print "$count\n" if $doCountOnly ;
+
+#  END OF MAIN
+
+sub dodir 
+{
+  local ($dir, $prefix) = @_ ;
+  local ($dot, $dotdot) ;
+  local (*DIR) ;   # will we be able to keep this many open?
+  #  nfg - quits just cuz no access:
+  #     chdir ($dir) or die "Couldn't chdir to $dir: $ERRNO\n" ;
+  $result = chdir ($dir) ;
+  if (!$result)
+  {
+    warn "Couldn't chdir to $prefix: $ERRNO\n" ;
+    return 0 ;
+  }
+
+  #  nfg - quits just cuz no access:
+  #     opendir (DIR, ".") or die "Couldn't open $dir: $ERRNO\n" ;
+  $result = opendir (DIR, ".") ;
+  if (!$result)
+  {
+    warn "Couldn't open dir $prefix, skipping: $ERRNO\n" ;
+  }
+  else
+  {
+    # $dot = readdir (DIR) ;
+    # $dotdot = readdir (DIR) ;
+    # if ($dot ne '.' or $dotdot  ne '..') 
+    # {
+      # warn "Whoops: first two files weren't . and ..\n" ;
+      # print STDERR "dot = $dot dotdot = $dotdot\n" ;
+    # }
+
+    foreach (readdir (DIR))
+    {
+      next if ($_ eq '.' or $_ eq '..') ;
+      # print "debug: $prefix$_\n" if $debug ;
+      # Does this one qualify?
+      if (test($_))
+      {
+        $fname = $_ ;
+        $fpath = "$prefix$_" ;
+        $fpath = '"' . $fpath . '"' if $doAddQuotes and $fpath =~ /\s/ ;
+        $fpath =~ s/(\s)/\\$1/g if $doAddBackSlashes ;
+        print "$fpath\n" unless $doCountOnly||$dols;
+	$count++ ;
+        ################################################################
+	# how do we manage to not open directories when many "files"   #
+	# really are directories? Look for a bundle? Ugh.              #
+        ################################################################
+	# if ($doOpen and -f $fname)
+        if ($doOpen)
+        {
+          $cmd = "open '$fname'" ;   # remember we're in the directory
+	  print STDERR "$0 debug: doing 'system $cmd'\n" if $debug ;
+          $result = system $cmd ;
+          print STDERR "Unable to do a system $cmd: $result\n" 
+              if $result ;
+        }
+
+	if ($dols)
+	{
+	  $cmd = "ls -ld '$fname'" ;
+	  $result = system $cmd ;
+	  print STDERR "$0: Unable to do a system $cmd: $result\n" 
+	      if $result ;
+	}
+        if ($doTW and -f $fname)
+        {
+          $cmd = "open -a /Applications/TextWrangler.app '$fname'" ;   # remember we're in the directory
+          $result = system $cmd ;
+          print STDERR "$0: Unable to do a system $cmd: $result\n" 
+              if $result ;
+        }
+	
+	if ($doDelete and -f $fname)
+        {
+	  unlink $fname
+	      or die "Couldn't unlink '$fname': $!\n" ;
+        }
+      }
+
+      # We go down into this directory if...
+      dodir ($_, "$prefix$_/") 
+	if (    -d $_         # it is a directory
+	  and ! -l $_         # and it is not a link
+			      # and we are doing hiddens or it isn't hidden.
+	  and ($doHidden or substr ($_, 0, 1) ne '.' )) ;
+    }
+    closedir (DIR) ;
+  }
+  chdir ".." unless $dir eq "." ;  # don't want to go up to where you 
+                                   # weren't 
+}
+
+
+sub startteststr
+{
+  $teststr = <<'EOTESTSTART';
+sub test
+{
+  my ($filename) = @_ ;
+  -e $filename ;   # just to get the stat done
+EOTESTSTART
+}
+
+sub addregexptest
+{
+  my ($regexp, $doic) = @_ ;
+  printhelpandexit ("You must specify a regular expression for -e\n") 
+    if !defined ($regexp) ;
+
+  $filename = '$filename' ;   # patent cheating
+  $teststr .= "  return $filename =~ " 
+	   . ($doic ? "/$regexp/i" : "/$regexp/") . " ;\n" ;
+}
+
+sub addnoargtest 
+{
+  my ($test) = @_ ;
+  my ($aat) ;
+
+  # If we've got a -T or -B test, we need to disable it if the
+  # file is an "active" file (named pipe, etc.)
+  if ($test =~ /[$activetests]/)
+  {
+    foreach $aat (split ('', $antiactivetypes))
+    {
+      # We just return if we can't test it properly
+      $teststr .= "  return 0 if -$aat _ ; \n" ;
+    }
+  }
+
+  # add in a -x _ unless it's a -l test, then use -x $filename 
+  $teststr .= "  return 0 unless -$test " 
+    . ($test eq 'l' ? '$filename' : '_') 
+    . " ;\n" ;
+ 
+}
+
+sub addoneargtest
+{
+  my ($test, $arg) = @_ ;
+  my ($val, $min, $max) ;
+  # the argument comes as a range
+  # the integer form:
+  # printhelpandexit ($shorthelpmsg, "Test arg $arg not in form [n]..[n]") 
+    # if ($arg !~ /(\d*)\.\.(\d*)$/) ;  # is it n..n or ..n or n.. or .. ?
+  # try following to allow for decimals, even negatives
+  printhelpandexit ($shorthelpmsg, "Test arg $arg not in form [n]..[n]") 
+    if ($arg !~ /^(-?\d*(\.\d+)?)\.\.(-?\d*(\.\d+)?)$/) ;  # is it n..n or ..n or n.. or .. ?
+
+  $min = $1 if $1 ne '' ;
+  # was $2
+  $max = $3 if $3 ne '' ;
+print "test $test min = $min max = $max\n" if $debug ;
+  printhelpandexit ($shorthelpmsg, 
+    "You have to specify a value for at least one end of a test argument.") 
+       if (!defined $min and !defined $max) ;
+  
+  $val = '$val' ;   # this is definitely cheating!
+# $teststr .= "$val = -$test _ ;\nprint \"\$filename \$val\\n\" ;\n" ;
+  $teststr .= "  $val = -$test _ ;\n  return 0 if" ;
+  $teststr .= " $val < $min " if defined $min ;
+  $teststr .= " or " if defined $min and defined $max ;
+  $teststr .= " $val > $max " if defined $max ;
+  $teststr .= " ;\n" ;
+}
+

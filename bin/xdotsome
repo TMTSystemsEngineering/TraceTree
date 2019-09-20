@@ -1,0 +1,431 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+use DB_File ;
+use Digest::MD5 ;
+
+require "fileutils.pl" ;
+require "miscutils.pl" ;
+require "ttutils.pl" ;
+
+while (@ARGV)
+{
+  $arg = shift ;
+  if ($arg eq "-f") { $doForce++ ; }
+  else { $pname = $arg ; }
+}
+die "Usage:\n  $0 [-f] projectname\n" unless $pname ;
+$doNotVap = ($pname eq "DSN" or $pname eq "SES_JUNO") ;
+print "$0: doing $pname\n" ;
+print "$0: will force execution of dot, no matter the status of files\n"
+    if $doForce ;
+ 
+$md5filename = "LogsAndData/$pname.md5" ;
+tie %md5s, "DB_File", $md5filename, O_RDWR, 0666, $DB_HASH
+    or die "Couldn't open db file '$md5filename': $!\n" ;
+
+########################################################################
+# We'll try it using md5 instead.  Hopefully, md5 doesn't have         #
+# anything that's not needed.                                          #
+########################################################################
+########################################################################
+# We could do this inside the main loop, but instead, let's just get   #
+# the list first, then start the main loop.  That eliminates           #
+# questionable behavior when you might add an item to %md5s, such as   #
+# new gif or big.gif files.                                            #
+########################################################################
+$count = 0 ; $dotcount = 0 ;
+foreach $fname (sort keys %md5s)
+{
+  next unless $fname =~ /\d+\.dot$/ ; # should eliminate bigdots as well 
+                                      # as non-dots 
+  $dotcount++ ;
+  # isnew flag should be set by xxmakedots 
+  next unless $doForce or getmd5isnew($md5s{$fname}) ;  
+  ($basefilename = $fname) =~ s/\.dot$// ;
+  push @baselist, $basefilename ;
+}
+continue
+{
+  $count++ ;
+  print STDERR 
+      "$0: Done examining $count files, of which $dotcount were dots\r" 
+          if $count%1000 == 0 ; 
+}
+print "$0: Done examining $count files, of which $dotcount were dots\n" ;
+
+$nbases = scalar @baselist ;
+print "xdotsome: found $nbases dot files needing processing\n" ;
+
+########################################################################
+# Now go through the actual update process.  We simply assume that if  #
+# dot needs updating, so does bigdot, since the same inputs are used   #
+# for each.                                                            #
+########################################################################
+$count = 0 ;
+foreach $basefilename (@baselist)
+{
+  $dotfilename = $basefilename . ".dot" ;
+  $mapfilename = $basefilename . ".map" ;
+  $giffilename = $basefilename . ".gif" ;
+  $bigdotfilename = $basefilename . ".big.dot" ;
+  $bigmapfilename = $basefilename . ".big.map" ;
+  $biggiffilename = $basefilename . ".big.gif" ;
+  unless ($doNotVap)
+  {
+    $vapdotfilename = $basefilename . ".vap.dot" ;
+    $vapmapfilename = $basefilename . ".vap.map" ;
+    $vapgiffilename = $basefilename . ".vap.gif" ;
+  }
+  $doit = 0 ;
+  $doit++ if $doForce ;  # global force
+  $doit++ if ! -e $mapfilename || ! -e $giffilename ;
+  if (!$doit)
+  {
+    $dotage = -M $dotfilename ;
+    $doit = 1 if  -M $mapfilename > $dotage || -M $giffilename > $dotage ;
+  }
+
+  if ($doit)
+  {
+
+    ($numnodes, $numlinks) = getDotFileStats ($dotfilename) ;
+    ####################################################################
+    # numlinks seems to be most relevant.  Heuristically, it seems     #
+    # that there's a breaking point such above about 250 links we get  #
+    # files greater than 20,000,000 pixels.  However, there is a       #
+    # cluster of small numlinks with large npixels, which we still     #
+    # need to catch.  So we do both.                                   #
+    ####################################################################
+    # print "stats: $dotfilename has $numnodes nodes and $numlinks links, and the gif has $npixels pixels\n" ;
+    # assume default font size is 10.  Have to add helvetica
+    $dotcmdstatic = 
+        "-Nfontname=helvetica " .
+	"-Tcmapx -o$mapfilename " .
+	"-Tgif -o$giffilename " .
+	"$dotfilename" ;
+    if ($numlinks > 250) 
+    { 
+      $dotcmd = "dot -Nfontsize=6 $dotcmdstatic"  ; 
+      # print "will do $dotfilename with fontsize=6\n" ;
+    }
+    else
+    { 
+      $dotcmd = "dot -Nfontsize=10 $dotcmdstatic" ; 
+    }
+    ($errorcode, $details) = doDotCmd ($dotcmd) ;
+    if ($errorcode == 0)
+    {
+    }
+    elsif ($errorcode == 1)
+    {
+      print "UH OH HAD TO SCALE '$dotcmd', scalefactor = $details\n" ;
+      scalemap ($mapfilename, $details) ;
+    }
+    elsif ($errorcode == 2 || $errorcode == 3)
+    {
+      print "UH OH '$dotcmd' error details = '$details'\n" ;
+    }
+    else
+    {
+      print "UH OH GOT A FUNNY ERROR RETURN for '$dotcmd'\n" ;
+    }
+    # unless we've already done a small font size, still have to check:
+    unless ($numlinks > 250)
+    {
+      $npixels = getgifsize ($giffilename) ;
+      if ($npixels > 20000000)
+      {
+        $spixels = commafy ($npixels) ;
+        $dotcmd = 
+            "dot -Nfontsize=6 $dotcmdstatic" ;
+        ($errorcode, $details) = doDotCmd ($dotcmd) ;
+        if ($errorcode == 0)
+        {
+        }
+        elsif ($errorcode == 1)
+        {
+          print "UH OH HAD TO SCALE '$dotcmd', scalefactor = $details\n" ;
+          scalemap ($mapfilename, $details) ;
+        }
+        elsif ($errorcode == 2 || $errorcode == 3)
+        {
+          print "UH OH '$dotcmd' error details = '$details'\n" ;
+        }
+        else
+        {
+          print "UH OH GOT A FUNNY ERROR RETURN for '$dotcmd'\n" ;
+        }
+        $npixels = getgifsize ($giffilename) ;
+        $spixels = commafy ($npixels) ;
+        print "did $dotfilename with fontsize=6 after trying fontsize=10\n" ;
+      }
+    }
+    ####################################################################
+    # HERE we need to check the gif file to see if it's changed,       #
+    # looking in md5s for that info; then we need to set isnew if it   #
+    # has changed.  Similar for biggif and vapgif.  It should not be   #
+    # necessary to do this with map file, because that doesn't get     #
+    # uploaded. We'll see.  We also want to set the dot file to not    #
+    # new.                                                             #
+    ####################################################################
+    $digest = calcmd5digest($giffilename) ;
+    $oldflagdigest = getmd5digest($md5s{$giffilename}) ;
+    if ($oldflagdigest ne $digest) 
+    { 
+      $md5s{$giffilename} = '1,' . $digest ; 
+    }
+    ($oldflag, $olddigest) = getmd5isnewanddigest($md5s{$dotfilename}) ;
+    $md5s{$dotfilename} = '0,' . $olddigest ;
+   
+    
+    $bigdotcmdstatic = 
+        "-Nfontname=helvetica " .
+	"-Tcmapx -o$bigmapfilename " .
+	"-Tgif -o$biggiffilename " .
+	"$bigdotfilename" ;
+    if ($numlinks > 250) 
+    { 
+      $bigdotcmd = "dot -Nfontsize=6 $bigdotcmdstatic"  ; 
+      # print "will do $dotfilename with fontsize=6\n" ;
+    }
+    else
+    { 
+      $bigdotcmd = "dot -Nfontsize=8 $bigdotcmdstatic" ; 
+    }
+
+    ($errorcode, $details) = doDotCmd ($bigdotcmd) ;
+    if ($errorcode == 0)
+    {
+    }
+    elsif ($errorcode == 1)
+    {
+      print "UH OH HAD TO SCALE '$bigdotcmd', scalefactor = $details\n" ;
+      scalemap ($bigmapfilename, $details) ;
+    }
+    elsif ($errorcode == 2 || $errorcode == 3)
+    {
+      print "UH OH '$bigdotcmd' error details = '$details'\n" ;
+    }
+    else
+    {
+      print "UH OH GOT A FUNNY ERROR RETURN for '$bigdotcmd'\n" ;
+    }
+    $digest = calcmd5digest($biggiffilename) ;
+    $oldflagdigest = getmd5digest($md5s{$biggiffilename}) ;
+    if ($oldflagdigest ne $digest) 
+    { 
+      $md5s{$biggiffilename} = '1,' . $digest ; 
+    }
+    ($oldflag, $olddigest) = getmd5isnewanddigest($md5s{$bigdotfilename}) ;
+    $md5s{$bigdotfilename} = '0,' . $olddigest ;
+    
+    unless ($doNotVap)
+    {
+      $vapdotcmdstatic = 
+	  "-Nfontname=helvetica " .
+	  "-Tcmapx -o$vapmapfilename " .
+	  "-Tgif -o$vapgiffilename " .
+	  "$vapdotfilename" ;
+      if ($numlinks > 250) 
+      { 
+        $vapdotcmd = "dot -Nfontsize=6 $vapdotcmdstatic"  ; 
+        # print "will do $dotfilename with fontsize=6\n" ;
+      }
+      else
+      { 
+        $vapdotcmd = "dot -Nfontsize=8 $vapdotcmdstatic" ; 
+      }
+      ($errorcode, $details) = doDotCmd ($vapdotcmd) ;
+      if ($errorcode == 0)
+      {
+      }
+      elsif ($errorcode == 1)
+      {
+	print "UH OH HAD TO SCALE '$vapdotcmd', scalefactor = $details\n" ;
+        scalemap ($vapmapfilename, $details) ;
+      }
+      elsif ($errorcode == 2 || $errorcode == 3)
+      {
+	print "UH OH '$vapdotcmd' error details = '$details'\n" ;
+      }
+      else
+      {
+	print "UH OH GOT A FUNNY ERROR RETURN for '$vapdotcmd'\n" ;
+      }
+      $digest = calcmd5digest($vapgiffilename) ;
+      $oldflagdigest = getmd5digest($md5s{$vapgiffilename}) ;
+      if ($oldflagdigest ne $digest) 
+      { 
+	$md5s{$vapgiffilename} = '1,' . $digest ; 
+      }
+      ($oldflag, $olddigest) = getmd5isnewanddigest($md5s{$vapdotfilename}) ;
+      $md5s{$vapdotfilename} = '0,' . $olddigest ;
+      
+    }
+  }
+
+  $count++ ;
+  print STDERR "$0: Done with $count of $nbases files\r" ; 
+}
+print "$0: Done with $count of $nbases files\n" ; 
+untie %md5s ;
+
+sub getgifsize # ($filename)
+{
+  my ($fname) = @_ ;
+  my ($data, $header, $w, $h) ;
+  local (*GIF) ;
+
+  open GIF, $fname or die "Couldn't open $fname for reading: $!\n" ;
+  $nbytes = sysread GIF, $data, 10 ;
+  die "Couldn't read from $fname: $!\n" if !defined $nbytes ;
+  die "Couldn't read 10 bytes from $fname\n" if $nbytes != 10 ;
+  ($header, $w, $h) = unpack "a6v2", $data ;
+  close GIF ;
+  return ($w*$h) ;
+}
+
+sub getDotFileStats # ($dotfilename)
+{
+  my ($dotfilename) = @_ ;
+  local (*DOT) ;
+  my ($numnodes, $numlinks) ;
+  open DOT, $dotfilename or die "Couldn't open $dotfilename for reading: $!\n" ;
+  $numnodes = 0 ;
+  $numlinks = 0 ;
+  while (<DOT>)
+  {
+    $numnodes++ if /label=/ ;
+    $numlinks++ if /\-\>/ ;
+  }
+  close DOT ;
+  return ($numnodes, $numlinks) ;
+}
+
+sub doDotCmd # ($dotcmd)
+{
+  my ($dotcmd) = @_ ;
+  local (*PDOT) ;
+  my $resultstring = "" ;
+  my $nlines = 0 ;
+  my $scalefactor = 1.0 ;
+  my $errorcode = 0 ;
+  
+  # dot: graph is too large for cairo-renderer bitmaps. Scaling by 0.54722 to fit
+  open (PDOT, "$dotcmd 2>&1 |")
+      or die "xdotsome: couldn't open pipe from $dotcmd: $!\n" ;
+  while (<PDOT>)
+  {
+    $resultstring .= $_ ;
+# print "in PDOT, '$_'\n"  ;
+    $nlines++ ;
+  }
+# print "xdotsome: '$dotcmd' returning $errorcode, resultstring = '$resultstring'\n" ;
+  return ($errorcode) if $nlines == 0 ;
+# print "xdotsome: nlines=$nlines resultstring='$resultstring'\n" ;
+  if ($nlines == 1)
+  {
+    if ($resultstring =~ /^dot: graph is too large.*Scaling by (0\.\d+) to fit/)
+    {
+      $scalefactor = $1 ;
+      $errorcode = 1 ;   # single-line error, scaling
+# print "xdotsome: scalefactor=$scalefactor\n" ;
+      return ($errorcode, $scalefactor) ;
+    }
+    else
+    {
+      $errorcode = 2 ;  # single-line error, not scaling
+      return ($errorcode, $resultstring) ;
+    }
+  }
+   else
+   {
+     $errorcode = 3 ;    # multi-line error, no interpretation
+     return ($errorcode, $resultstring) ;
+   }
+}
+
+# lines containing 'coords="1812,1331,2036,1435"' need to be scaled
+sub scalemap # ($mapfilename, $scalefactor)
+{
+  my ($mapfilename, $scalefactor) = @_ ;
+  local *SCALEIN ;
+  local *SCALEOUT ;
+  my ($a, $b, $c, $d, $before, $after) ;
+
+  my ($mapfiletemp) ;
+# print "IN SCALEMAP mapfilename=$mapfilename scalefactor=$scalefactor\n" ;
+
+  $mapfiletemp = "$mapfilename.tmp" ;
+  open SCALEIN, $mapfilename 
+      or die "Couldn't open $mapfilename for reading: $!\n" ;
+  open SCALEOUT, "> $mapfiletemp"
+      or die "Couldn't open $mapfiletemp for writing: $!\n" ;
+  while (<SCALEIN>)
+  {
+# print "\$_='$_'\n" ;
+    if (/coords="(\d+),(\d+),(\d+),(\d+)"/)
+    {
+      $before = $` ;
+      $after = $' ;
+      $a=$1 ; $b=$2 ; $c = $3 ; $d=$4 ;
+# print "abcd=$a $b $c $d\n" ;
+      $a=int($a*$scalefactor) ;
+      $b=int($b*$scalefactor) ;
+      $c=int($c*$scalefactor) ;
+      $d=int($d*$scalefactor) ;
+# print "abcd=$a $b $c $d\n" ;
+# print "before=$before\n" ;
+# print "after=$after\n" ;
+      print SCALEOUT $before . "coords=\"$a,$b,$c,$d\"" . $after ;
+    }
+    else
+    {
+      print SCALEOUT ;
+    }
+  }
+  close SCALEIN ;
+  close SCALEOUT ;
+
+  rename $mapfilename, "$mapfilename.bak"
+      or die "Couldn't rename $mapfilename to $mapfilename.bak: $!\n" ;
+  rename $mapfiletemp, "$mapfilename"
+      or die "Couldn't rename $mapfiletemp to $mapfilename: $!\n" ;
+}
+    
+

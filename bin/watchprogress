@@ -1,0 +1,517 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+require "fileutils.pl" ;
+
+$sampleinput=<<EOSI;
+Starting module /AMD/L1 PLRA
+  id: 1 count 1 will update: false
+  id: 4 count 2 will update: true
+
+DONE
+EOSI
+
+
+# LIGHT_RED      => "[1;31m",
+# LIGHT_GREEN     => "[1;32m",
+# YELLOW         => "[1;33m",
+# LIGHT_BLUE     => "[1;34m",
+# MAGENTA     => "[1;35m",
+# LIGHT_CYAN     => "[1;36m",
+# WHITE         => "[1;37m",
+# NORMAL         => "[0m",
+# BLACK         => "[0;30m",
+# RED         => "[0;31m",
+# GREEN         => "[0;32m",
+# BROWN         => "[0;33m",
+# BLUE         => "[0;34m",
+# CYAN         => "[0;36m",
+# BOLD         => "[1m",
+# UNDERSCORE     => "[4m",
+# REVERSE     => "[7m",
+
+$termbold = "\e[1m" ;
+$termnorm = "\e[0m" ;
+
+$logdir='LogsAndData' ;
+
+@defplist = (
+    "/TMT_Requirements" 
+    # "Sandbox",
+    ) ;
+
+# "GRAIL_-_LM_and_JPL", 
+
+$pfilename = "progress8" ;  # default to eight
+$sleeptime = 10 ;
+$isfirst = 1 ;
+$newnumnodes = 1000000 ;
+$oldnumnodes = -1 ;
+$oldtime = -1 ;
+$ncount = 0 ;
+# push @ARGV, @defplist if scalar (@ARGV) == 0 ;
+
+# print "ARGV=@ARGV\n" ;
+
+$helpmsg =<<EOH;
+Usage:
+  $0 [options...] estimatedNumberOfObjects
+    or
+  $0 [options...] projects...
+    or
+  $0 [options...]
+Where options <defaults in angle brackets> are:
+  -doit         launch xdosome for each project for which any updates 
+                happened, after all the projects have been dumped by 
+                DOORS <don't>
+  -doitnow      same as -doit, but do it immediately after each project 
+                has been dumped, in the background.  Log goes to 
+                projname.xdosome.log. <don't>
+  -new          use xdosomenew instead of xdosome <don't>
+  -debug        currently, make interval 3 seconds <don't>
+  -9            use "progress9" progress file <use "progress8">
+  -i interval   time in seconds between updates 
+  -q            quiet mode - don't say estimated time to go <do>
+Giving an estimated number of objects causes $0 to use that as a basis 
+  for estimating time left.
+Listing projects causes $0 to use the previous run's results in 
+  estimating number of objects.
+Giving no projects or estimated number of objects causes $0 to look at 
+  results of previous run for all known projects.
+Current known projects are:
+@defplist .
+EOH
+
+# start from correct directory
+# This is true from Linux.  From Windows, this directory is 
+# SAMBA-mounted as simply "doors-ttt"
+$tttdata="/data/doors-ttt/data/" ;
+chdir $tttdata or die "Could not change directory to '$tttdata': $!\n" ;
+print "PATH IS $ENV{'PATH'}\n" ;
+
+
+while (@ARGV)
+{
+  $arg = shift ;
+  if ($arg =~ /^-h/)
+  {
+    print $helpmsg ;
+    exit 0 ;
+  }
+  if ($arg =~ /^\d+$/) { $nest = $arg ; }
+  elsif ($arg eq "-doit")    { $dodoit++ ; }
+  elsif ($arg eq "-doitnow") { $dodoitnow++ ; }
+  elsif ($arg eq "-new")     { $donew++ ; }
+  elsif ($arg eq "-debug")   { $dodebug++ ; }
+  elsif ($arg eq "-9")       { $doprogress9++ ; }
+  elsif ($arg eq "-i") { $sleeptime = shift ; }
+  elsif ($arg eq "-q") { $doquiet++ ; }
+  else   # otherwise we assume is a project name
+  {
+    push @plist, $arg ;
+  }
+}
+
+$script="xdosome" ;
+$script="xdosomenew" if $donew ;
+
+if ($plist[0] eq "lostwo")
+{
+  splice @plist,0,1,'OCO-2','Phaeton' ;
+}
+elsif ($plist[0] eq "8smaller")
+{
+  splice @plist, 0, 1, 'Phaeton', 'OCO-2', 'APX', 'MSL_2_0', 'MSL', 'SMAP' ;
+}
+elsif ($plist[0] eq "8smallest")
+{
+  splice @plist, 0, 1, 'Phaeton', 'OCO-2', 'APX', 'MSL_2_0' ;
+}
+elsif ($plist[0] eq "9small")
+{
+  splice @plist, 0, 1, 'LDSD', 'SE_Tools', 'ASTRA', 'GRACE-FO', 'FINESSE', 'TGO' ;
+}
+elsif ($plist[0] eq "eight")
+{
+  splice @plist, 0, 1, 'OCO-2', 
+                       'Phaeton', 'SMAP', 
+		       'MSL', 'MSL_2_0' ;
+}
+elsif ($plist[0] eq "nine")
+{
+  splice @plist, 0, 1, 
+    "/FINESSE",
+    "/CAL",
+    "/CHARM",
+    "/LDSD",
+    "/ASTRA",
+    "/APX",
+    "/TGO",
+    "/GRACE-FO",
+    "/InSight",
+    "/SE_Tools", 
+    "/MSM",
+    "/TMT_Requirements"
+}
+for ($i = 0 ; $i < scalar(@plist) ; $i++)
+{
+  if ($plist[$i] =~ /^grail$/i) { $plist[$i] = 'GRAIL_-_LM_and_JPL' ; }
+}
+print "PLIST IS NOW @plist\n" ;
+
+if (!defined $nest and !@plist) { @plist = @defplist ; }
+foreach $pname (@plist)
+{
+  $plistname = "LogsAndData/$pname.nodelist" ;
+  open P, $plistname or warn "Couldn't open $plistname for reading: $!\n" ;
+  $pcount = 0 ;
+  while (<P>) { $pcount++ ; }
+  close P ;
+  print "$pname has $pcount lines\n" ;
+  $ncount += $pcount ;
+}
+
+$nest = $ncount if $ncount > 0 ;
+$sleeptime = 3 if $dodebug ;
+print "Estimated number of nodes = $nest\n" ;
+
+if ($dodoit)
+{
+  print "\nWILL ATTEMPT TO GENERATE WEBSITES AFTER DXL IS DONE\n" ;
+  # print "Running testinstallationdirectories\n" ;
+  # system "testinstallationdirectories" ;
+  # print "\n" ;
+}
+
+if ($dodoitnow)
+{
+  print "\nWILL ATTEMPT TO GENERATE WEBSITES IN BACKGROUND AFTER EACH PROJECT IS DONE\n" ;
+  # print "Running testinstallationdirectories\n" ;
+  # system "testinstallationdirectories" ;
+  # print "\n" ;
+}
+
+########################################################################
+# We'll do the progress file choice empirically, sort of: if it's      #
+# LDSD or DSN (for now), we need progress9                             #
+########################################################################
+if ($doprogress9 or $plist[0] =~ /(FINESSE|CHARM|LDSD|ASTRA|TGO|GRACE-FO|InSight|SE_Tools|MSM|TMT_Requirements)/)
+{ 
+  $pfilename = "progress9" ; 
+}
+$ppathname = "$logdir/$pfilename" ;
+
+$tsvname = "$logdir/watch$pfilename.tsv" ;
+open TSV, "> $tsvname" 
+    or warn "Uh-oh, couldn't open $tsvname for writing: $!\n" ;
+      print TSV "T\t# nodes\t# to go" ;
+      print TSV "\td nodes\td updated\td not updated\trate\ttime to go" ;
+      print TSV "\toverall d nodes\toverall rate\toverall time to go\n" ;
+
+print "Will use progress file '$ppathname'\n" ;
+while (1)
+{
+  $thetime = time ;
+
+  next if ! -e $ppathname ;
+  $isopen = open P, $ppathname ;
+  if (!isopen) 
+  { 
+    warn "Couldn't open $ppathname for reading: $!\n" ; 
+  }
+  else
+  {
+    ####################################################################
+    # FIRST READ THE PROGRESS FILE                                     #
+    ####################################################################
+    $/ = "\r\n" ;
+
+    $nummods = 0 ;
+    $newnumnodes = 0 ;
+    $numnodesthismodule = 0 ;
+    $numnodesthisproject = 0 ;
+    $numupdated = 0 ;
+    $numnotupdated = 0 ;
+    %numupdatedinp = () ;
+    %numnotupdatedinp = () ;
+# sample data:
+# Starting module /AMD/L1 PLRA
+#   id: 1 count 1 will update: false
+    $oldpname = "" ;
+    while ($pline = <P>)
+    {
+      chomp $pline ;
+      $nullc = chr(0) ;
+      $pline =~ s/$nullc//g ;
+      if ($pline =~ /count/)  # NORMAL LINE
+      {
+	$newnumnodes++ ;
+	$numnodesthismodule++ ;
+	$numnodesthisproject++ ;
+	if ($pline =~ /will update: (true|false)/) 
+	{
+	  $numupdated++ if $1 eq "true" ;
+	  $numnotupdated++ if $1 eq "false" ;
+	  $numupdatedinp{$pname}++ if $1 eq "true" ;
+	  $numnotupdatedinp{$pname}++ if $1 eq "false" ;
+	}
+      }
+      elsif ($pline =~ /module/)   # START OF MODULE
+      {
+	$numnodesthismodule = 0 ;
+	$nummods++ ;
+	($lastmodule = $pline) =~ s/Starting module // ;
+	# find project name
+	$pline =~ /Starting module \/([^\/]+)\// ;
+	$pname = $1 ;
+	if (!defined $numupdatedinp{$pname}) { $numupdatedinp{$pname} = 0 ; }
+	if (!defined $numnotupdatedinp{$pname}) { $numnotupdatedinp{$pname} = 0 ; }
+      }
+      elsif (length($pline) == 0 or $pline eq 'DONE') {} # BLANK OR DONE
+      else
+      {
+	print STDERR "length of pline is " . length($pline) . "\n" ;
+	for ($ip = 0 ; $ip < 10 ; $ip++) { print STDERR "ip=$ip ord c = '" . ord(substr ($pline, $ip, 1)) . "'\n" ; }
+	print STDERR "Huh? Line $. is '$pline'\n" if $newnumnodes > $oldnumnodes ;
+      }
+
+      ####################################################################
+      # IF this is a change of module AND there were some updates AND    #
+      # user wants us to, EXECUTE XDOSOME IN BACKGROUND                  #
+      ####################################################################
+      if ( ($dodoit or $dodoitnow)
+	    and (!$donewith{$oldpname})
+	    and (($oldpname ne "" and $oldpname ne $pname)
+		  or ($pline =~ /done/i))
+	 )
+      {
+	if ($numupdatedinp{$oldpname} > 0)
+	{
+	  # remember we're operating on the old project!
+	  ($pnametodo = $oldpname) =~ s/ /_/g ;
+	  $pnametodo =~ s/\./_/g ;
+	  $cmd = $script ;
+	  $cmd .= " -q" if $doquiet ;
+	  $cmd .= " $pnametodo" ;
+	  if ($dodoitnow)
+	  {
+	    # looks like '>&' works OK in a system call.  Why?
+	    $cmd .= " >& LogsAndData/$pnametodo.$script.log" ;
+	    $cmd .= ' &' ;
+	    print "WILL DO system '$cmd' in background NOW\n" ;
+	    $result = system $cmd ;
+	    exit $result if $result != 0 ;
+	  }
+	  else
+	  {
+	    print "WILL DO system '$cmd' when they're all done.\n" ;
+	    push @cmdstodo, $cmd ;
+	  }
+	}
+	else
+	{
+	  print "Done with $oldpname, no objects updated, no action taken\n" ;
+	}
+	$donewith{$oldpname}++ ;  # flag done whether we've taken action 
+	                          # or not
+      }
+      if ($oldpname ne "" and $oldpname ne $pname)
+      {
+	$numnodesthisproject = 0 ;
+      }
+      $oldpname = $pname ;
+
+      $lastline = $pline ;
+      $pline = "" ;
+    }
+    close P ;
+
+    ####################################################################
+    # NOW REPORT ON PROGRESS                                           #
+    ####################################################################
+    $numtogo = $nest-$newnumnodes ;
+    if ($isfirst) 
+    { 
+      printf "#nodes=${termbold}% 6d${termnorm} togo=${termbold}% 6d${termnorm} ", $newnumnodes, $numtogo ;
+      printf 
+          " ; #mods=% 3d, nodes in mod=% 4d, in proj=% 6d, upd in proj=${termbold}% 4d${termnorm}, last='%s'", 
+	  $nummods, $numnodesthismodule, $numnodesthisproject,
+	  $numupdatedinp{$pname}, $lastmodule;
+      printf "\n" ;
+      $firsttime = $thetime ;
+      $firstnumnodes = $newnumnodes ;
+    }
+    else 
+    { 
+      # not the first time through
+      $immpstr = "" ; $immsstr = "" ;
+      $ovrpstr = "" ; $ovrsstr = "" ;
+      $ovrdtime = $thetime - $firsttime ;
+      if ($nest > 0)
+      {
+	# reporting if there's an estimate
+
+	$dtime = $thetime - $oldtime ;
+	$dnum = $newnumnodes - $oldnumnodes ;
+	$dnumupdated = $numupdated - $oldnumupdated ;
+	$dnumnotupdated = $numnotupdated - $oldnumnotupdated ;
+	if ($dnum > 0)
+	{
+	  # reporting immediate progress if any
+	  $rate = $dnum / $dtime ;
+	  $timetogo = $numtogo / $rate ;
+	  ($h, $m, $s) = ttohms ($timetogo) ;
+	  $immpstr = sprintf "dn=${termbold}% 6d${termnorm} dupd=${termbold}% 6d${termnorm} d!upd=${termbold}% 6d${termnorm} ${termbold}%7.3f${termnorm}/sec ${termbold}%02d:%02d:%02d${termnorm}", 
+	      $dnum, $dnumupdated, $dnumnotupdated, $rate, $h, $m, $s ;
+	  $immtstr = "$dnum\t$dnumupdated\t$dnumnotupdated\t$rate\t$timetogo" ;
+	  $immsstr = " " ;
+	  $immsstr .= " $h" if $h > 0 ;
+	  $immsstr .= " $m" if $m > 0 ;
+	  $immsstr .= " $s" if $s > 0 ;
+	}
+	else
+	{
+	  $immtstr = "\t\t\t0.0\t" ;   # 0.0 is rate
+	  $immsstr = anyoneof ("stagnant", 
+	                  "cesspool", 
+			  "moribund", 
+			  "makin great progress", 
+			  "sheesh") ;
+	  $immpstr = "           NOTHING DOING                               " ;  # pad it out - right number of spaces?
+	}
+
+	$ovrdnum = $newnumnodes - $firstnumnodes ;
+	if ($ovrdnum > 0)
+	{
+	  # reporting overall progress if any
+	  $ovrrate = $ovrdnum / $ovrdtime ;
+	  $ovrtimetogo = $numtogo / $ovrrate ;
+	  ($h, $m, $s) = ttohms ($ovrtimetogo) ;
+	  $ovrpstr = sprintf "overall dn=${termbold}% 6d${termnorm} ${termbold}%7.3f${termnorm}/sec ${termbold}%02d:%02d:%02d${termnorm}", 
+	      $ovrdnum, $ovrrate, $h, $m, $s ;
+	  $ovrtstr = "$ovrdnum\t$ovrrate\t$ovrtimetogo" ;
+	  $ovrsstr = "- over all " ;  # dash to put some time in
+	  $ovrsstr .= " $h" if $h > 0 ;
+	  $ovrsstr .= " $m" if $m > 0 ;
+	  $ovrsstr .= " $s" if $s > 0 ;
+	}
+	$sstr = "$immsstr $ovrsstr" ;
+      }  # end of progress stuff
+      else
+      {
+	$sstr = "" ;
+      }
+      printf "@ % 5d: #nodes=${termbold}% 6d${termnorm} togo=${termbold}% 6d${termnorm} ", $ovrdtime, $newnumnodes, $numtogo ;
+      print TSV "$ovrdtime\t$newnumnodes\t$numtogo" ;
+      print " $immpstr " if $immpstr ;
+      print TSV "\t$immtstr" ;
+      print " $ovrpstr " if $ovrpstr ;
+      print TSV "\t$ovrtstr" ;
+      printf 
+          " ; #mods=% 3d, nodes in mod=% 4d, in proj=% 6d, upd in proj=${termbold}% 4d${termnorm}, last='%s'", 
+	  $nummods, $numnodesthismodule, $numnodesthisproject,
+	  $numupdatedinp{$pname}, $lastmodule;
+      print "\n" ;
+      print TSV "\n" ;
+      system "saybg $sstr" unless ($doquiet or $sstr =~ /^\s*$/) ;
+
+    }  # end of else (not first)
+
+
+    last if $lastline =~ /done/i ;
+    $oldnumupdated = $numupdated ;
+    $oldnumnotupdated = $numnotupdated ;
+    $oldnumnodes = $newnumnodes ;
+    $oldtime = $thetime ;
+
+    $isfirst = 0 ;
+  } # end of is there a progress file?
+}
+continue
+{
+  # $result = system "sleepdown $sleeptime" ;
+  # exit $result if $result != 0 ;
+  sleep $sleeptime ;
+}  # end of while
+
+########################################################################
+# NOW MAKE A SUMMARY REPORT                                            #
+########################################################################
+@keys = sort keys %numupdatedinp ;
+print "Project name\t# updated\t# not updated\ttotal\n" ;
+foreach $pname (@keys)
+{
+  $numup = $numupdatedinp{$pname} ;
+  $numnotup = $numnotupdatedinp{$pname} ;
+  $numtotal = $numup + $numnotup ;
+  $totalup += $numup ;
+  $totalnotup += $numnotup ;
+  print "$pname\t$numup\t$numnotup\t$numtotal\n" ;
+}
+$total = $totalup + $totalnotup ;
+print "TOTAL\t$totalup\t$totalnotup\t$total\n" ;
+
+# system "say I am done." unless $doquiet ;
+# system "open ttrnew" ;
+# system "say remember to transfer to tee tee are new" unless $doquiet ;
+
+if ($dodoit and @cmdstodo)
+{
+  foreach $cmd (@cmdstodo)
+  {
+    print "++++++++++++ WILL NOW DO '$cmd' ++++++++++++++++++\n" ;
+    $result = system $cmd ;
+    print "Result of system call was $result\n" ;
+    print "-----------------------------------------------------\n" ;
+  }
+}
+
+sub anyoneof
+{
+  my $which = int(rand(scalar (@_))) ;
+  my $return = @_[$which] ;
+  return  $return ;
+}
+
+sub ttohms
+{
+  my ($t) = @_ ;
+  my $h = int($t / 3600) ;
+  my $m = int (($t % 3600) / 60) ;
+  my $s = $t % 60 ; # evidently perl's % takes int
+  return ($h, $m, $s) ;
+}

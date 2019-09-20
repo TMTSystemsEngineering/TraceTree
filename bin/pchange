@@ -1,0 +1,225 @@
+#!/usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+use English ;
+use FileHandle ;
+
+require "miscutils.pl" ;
+
+$TRUE = 1 ;
+$FALSE = 0 ;
+
+$shorthelpmessage = <<"SEOH";
+pchange: in-place grep and string substitution script.
+Usage:
+  pchange [options] [-e] searchstring [-s] substitutestring [-f] filename [...]
+SEOH
+
+$usableshorthelpmessage = <<"USEOH";
+$shorthelpmessage
+Where the options (which may be combined, e.g. '-il') are:
+  -h -H -i -g -l
+and the -e, -s, and -f switches are provided to force interpretation of
+the next argument as the searchstring, substitutestring, and filename, 
+respectively.
+
+Try 'pchange -help' for detailed help, or 'pchange -qh' to repeat this message.
+USEOH
+
+$helpmessage = <<"EOH";
+$shorthelpmessage
+
+Where [defaults in square brackets]:
+  searchstring     is a Perl-style regular expression [no default].
+  filename...      is (are) the name(s) of the file(s) to search [stdin].
+
+  -e searchstring  next argument is the search string (see Note 1).
+  -s searchstring  next argument is the substitute string (see Note 1).
+  -f afilename     next argument is a filename (see Note 1).
+
+And option switches are:
+  -h     Do not display filenames [do if there are more than one].
+  -H     Do display filenames [don't if there's only one].
+  -i     Ignore case in search [do case sensitive search] .
+  -g     Do global search and replace [replace only first occurrence 
+	 in each line].
+  -l     List only the name of each file found to match the target 
+         searchstring [list each line found].
+Notes:
+
+1)  The -e, -s, and -f options are useful if the searchstring or any 
+    filename begins with a dash. 
+
+    Normally, the searchstring is assumed to be the first argument with 
+    no dash in front of it, the substitute string is the second such, 
+    and all subsequent dashless arguments are input file names. 
+
+2)  The searchstring will often need to be single-quoted to avoid the 
+    shell trying to interpret it. 
+
+3)  Remember also that perl regular expressions attach meaning to 
+    certain characters.  Sometimes these characters act silently, other 
+    times they result in error reports.  E.g., the searchstring '+' 
+    results in this error message: 
+
+      /+/: ?+* follows nothing in regexp at pchange line 119, <INPUT> line 1.
+
+    In csh, you need to specify a search for a '+' character in either 
+    of (at least) two ways:
+
+      pchange \\+ filename 
+      pchange '\+' filename
+
+4)  The OPTION switches listed above may be grouped together, e.g. 
+
+      pchange -li string filename
+
+5)  pchange silently skips directories found in the list of files. 
+
+6)  INPUT RECORD SEPARATORS other than default are not supported currently.
+
+7)  If any change is made, pchange automatically backs up the original 
+    file by adding the extension ".bak" to it, silently stepping on 
+    existing files by that name. 
+
+8)  If no change is made, pchange does not touch the file.  This means 
+    that you shouldn't count on the "filename.bak" file existing.  This 
+    design decision was made in the interest of efficiency.  For the 
+    same reason, pchange copies the entire file contents into memory 
+    before writing.  Therefore very large files might cause a problem. 
+
+EOH
+
+while (@ARGV)
+{
+  $_ = shift ;
+  if (/^-he/) { printhelpandexit($helpmessage) ; }
+  if (/^-qh/) { printhelpandexit($usableshorthelpmessage) ; }
+  elsif ($_ eq "-e") { $searchstring = shift ; }
+  elsif ($_ eq "-s") { $substring = shift ; }
+  elsif ($_ eq "-f") { push @filelist, shift ; }
+  elsif (/^-/) 
+  { 
+    # get rid of each letter as it appears...
+    $doprintfilenames++ if s/H//g ;
+    $noprintfilenames++ if s/h//g ;
+    $ignorecase++       if s/i//g ;
+    $doglobal++         if s/g//g ;
+    $dolistonly++       if s/l//g ;
+
+    # At this point there should be nothing left of the flag options
+    printhelpandexit ($usableshorthelpmessage, "Undefined option(s): $_") 
+      if $_ ne '-' ; 
+  }
+  elsif (!defined ($searchstring)) { $searchstring = $_ ; }
+  elsif (!defined ($substring))    { $substring = $_ ; }
+  else
+  {
+    push @filelist, $_ ;
+  }
+}
+
+printhelpandexit ($usableshorthelpmessage, "No search string defined") 
+  if !defined ($searchstring) ;
+
+printhelpandexit ($usableshorthelpmessage, "No substitute string defined") 
+  if !defined ($substring) ;
+
+printhelpandexit ($usableshorthelpmessage, "No files specified")
+  if scalar (@filelist) == 0 ;
+
+if ($doprintfilenames or (!$noprintfilenames and scalar (@filelist) > 1))
+{
+  foreach (@filelist) { $maxlength = length $_ if length $_ > $maxlength; }
+  $filefmt = "% ${maxlength}s" ;
+  $doprintfilenames++ ;
+}
+
+# use embedded pattern-match modifier.
+$searchstring = "(?i)$searchstring" if ($ignorecase) ;
+
+foreach $infilename (@filelist)
+{
+  next if ( -d $infilename ) ;   # directory?  skip it
+
+  $result = open (INPUT, $infilename) ;
+  if (!$result)
+  {
+    warn "Couldn't open $infilename for reading: $ERRNO\n" ;
+    next ;
+  }
+
+  $foundone = $FALSE ;
+  undef @lines ;
+  while (<INPUT>)
+  {
+    if (s/$searchstring/$substring/o)  # use the compile-once option
+    {
+      # a little awkward, but what the hey - should be more efficient
+      s/$searchstring/$substring/go if $doglobal ;
+      $foundone = $TRUE ;
+      if (!$dolistonly)
+      {
+	# MATCH, normal case
+	printf "$filefmt: ", $infilename if $doprintfilenames ;
+	print ;
+      }
+    }
+    push @lines, $_ ;
+  }
+
+  if ($foundone)
+  {
+    print "$infilename\n" if $dolistonly ;
+    $outfilename = "$infilename.pchange.$$.tmp" ;
+    open (OUTPUT, "> $outfilename") 
+      or die "Couldn't open temporary file $outfilename for writing: $!\n" ;
+
+    foreach (@lines)
+    {
+      print OUTPUT 
+	or die "Couldn't print to temporary file $outfilename: $!\n " ;
+    }
+    close OUTPUT ;
+    rename $infilename, "$infilename.bak" ;
+    rename $outfilename, $infilename ;
+  }
+} 
+continue 
+{
+  close (INPUT) ;
+}

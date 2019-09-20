@@ -1,0 +1,3 @@
+#! /bin/tcsh
+rsync -v index.html favicon.ico exp*.png *.css jgrimes@sscae-srv2.jpl.nasa.gov:trace
+# rsync -v index.html favicon.ico exp*.png *.css ../../../website

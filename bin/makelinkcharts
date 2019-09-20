@@ -1,0 +1,179 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+require "ttutils.pl" ;
+
+$rootdirname = "ttr" ;
+if (@ARGV) { $pname = $ARGV[0] ; $rootdirname = "$rootdirname/$pname" ; }
+else { die "Usage:\n  $0 projectname\n" ; }
+print "$0: doing $rootdirname\n" ;
+
+unless ($pname eq "GRACE-FO" 
+    # or $pname eq "Phaeton"     Phaeton hangs during dot
+    or $pname eq "DSN" 
+    or $pname eq "CAL" 
+    or $pname eq "CHARM"
+    or $pname eq "FINESSE"
+    or $pname eq "APX" 
+    or $pname eq "MSL"
+    or $pname eq "MSL_2_0"
+    or $pname eq "MSM"
+    or $pname eq "TGO" 
+    # or $pname eq "SMAP"   SMAP hangs during dot
+    or $pname eq "LDSD" 
+    or $pname eq "InSight"
+    or $pname eq "TMT_Requirements"
+    or $pname eq "ASTRA" ) 
+{
+  print STDERR "$0: project $pname not supported\n" ;
+  exit 0 ;
+}
+
+# NOT WORKING GENERALLY
+$dosplines = 1 ;
+# everything's OK now it seems.  doing splines doesn't wreck things except maybe Phaeton
+# $dosplines = 0 if $pname eq "SMAP" or $pname eq "MSL_2_0" or $pname eq "Phaeton" ;
+# $dosplines = 0 if $pname eq "SMAP" or $pname eq "Phaeton" ;
+# $dosplines = 0 if $pname eq "SMAP" or $pname eq "Phaeton" ;
+# $dosplines = 0 ;
+print "$0: DOING makelinkcharts $pname with splines = $dosplines\n" ;
+$cmd = "countlinksbetweenmodules $pname" ;
+print "$0: Doing '$cmd'\n" ;
+$result = system $cmd ;
+die "$0: dot resulted in $result\n" if $result ;
+
+$linksdotname1 = "$pname.links1.dot" ;
+$linksdotname2 = "$pname.links2.dot" ;
+$linksdotname3 = "$pname.links3.dot" ;
+$linksgifname1 = "$pname.links1.gif" ;
+$linksgifname2 = "$pname.links2.gif" ;
+$linksgifname3 = "$pname.links3.gif" ;
+die "$linksdotname1 doesn't exist\n" unless (-e $linksdotname1) ;
+die "$linksdotname2 doesn't exist\n" unless (-e $linksdotname2) ;
+die "$linksdotname3 doesn't exist\n" unless (-e $linksdotname3) ;
+system "ls -l $linksdotname1 $linksdotname2 $linksdotname3" ;
+
+$cmd = "dot -Gsplines=$dosplines -Gfontname=arial -Gfontsize=20 -Nfontname=arial -Nfontsize=8 -Tgif -o$linksgifname1 $linksdotname1" ;
+print "$0: Doing '$cmd'\n" ;
+$result = system $cmd ;
+print STDERR "RESULT = $result\n" ;
+die "$0: dot resulted in $result\n" if $result ;
+
+$cmd = "dot -Gsplines=$dosplines -Gfontname=arial -Gfontsize=20 -Nfontname=arial -Nfontsize=8 -Tgif -o$linksgifname2 $linksdotname2" ;
+print "$0: Doing '$cmd'\n" ;
+$result = system $cmd ;
+print STDERR "RESULT = $result\n" ;
+die "$0: dot resulted in $result\n" if $result ;
+
+$cmd = "dot -Gsplines=$dosplines -Gfontname=arial -Gfontsize=20 -Nfontname=arial -Nfontsize=8 -Tgif -o$linksgifname3 $linksdotname3" ;
+print "$0: Doing '$cmd'\n" ;
+$result = system $cmd ;
+print STDERR "RESULT = $result\n" ;
+die "$0: dot resulted in $result\n" if $result ;
+
+die "$linksgifname1 doesn't exist\n" unless (-e $linksgifname1) ;
+die "$linksgifname2 doesn't exist\n" unless (-e $linksgifname2) ;
+die "$linksgifname3 doesn't exist\n" unless (-e $linksgifname3) ;
+system "ls -l $pname.links?.gif" ;
+
+$destlinksgifname1 = "ttr/$pname/$linksgifname1" ;
+unlink $destlinksgifname1 ; # remove old without error
+rename $linksgifname1, $destlinksgifname1
+    or die "COuldn't move $linksgifname1 to $destlinksgifname1: $!\n" ;
+$destlinksgifname2 = "ttr/$pname/$linksgifname2" ;
+unlink $destlinksgifname2 ; # remove old without error
+rename $linksgifname2, $destlinksgifname2
+    or die "COuldn't move $linksgifname2 to $destlinksgifname2: $!\n" ;
+$destlinksgifname3 = "ttr/$pname/$linksgifname3" ;
+unlink $destlinksgifname3 ; # remove old without error
+rename $linksgifname3, $destlinksgifname3
+    or die "COuldn't move $linksgifname3 to $destlinksgifname3: $!\n" ;
+
+# Now we need a linkschart html file
+$reportdate = `date` ;
+chomp $reportdate ;
+
+$htmlfilename = "ttr/$pname/linkcharts.html" ;
+$htmlfilename1 = "ttr/$pname/linkcharts1.html" ;
+$htmlfilename2 = "ttr/$pname/linkcharts2.html" ;
+$htmlfilename3 = "ttr/$pname/linkcharts3.html" ;
+print STDERR "Opening html files '$htmlfilename' '$htmlfilename1' '$htmlfilename2' '$htmlfilename3'\n" ;
+open H, "> $htmlfilename"
+    or die "Couldn't open '$htmlfilename' for writing: $!\n" ;
+print H htmlheader("Link Charts for $pname") ;
+print H <<EOH;
+<H2>Link Charts for $pname generated $reportdate</H2>
+<a href="linkcharts1.html">Chart 1 - Requirements only</a><br>
+<a href="linkcharts2.html">Chart 2 - Requirements starting at OAD, plus ICDs</a><br>
+<a href="linkcharts3.html">Chart 3 - Requirements starting at OAD, plus VAMs</a><br>
+</body></html>
+EOH
+
+open H1, "> $htmlfilename1"
+    or die "Couldn't open '$htmlfilename1' for writing: $!\n" ;
+print H1 htmlheader("Link Charts for $pname, Requirements Only") ;
+print H1 <<EOH1;
+<a href="linkcharts.html">BACK</a><br>
+<a href="$linksgifname1">DOWNLOAD</a><br>
+<img src="$linksgifname1">
+</body></html>
+EOH1
+close H1 ;
+
+open H2, "> $htmlfilename2"
+    or die "Couldn't open '$htmlfilename2' for writing: $!\n" ;
+print H2 htmlheader("Link Charts for $pname, Requirements plus ICDs") ;
+print H2 <<EOH2;
+<a href="linkcharts.html">BACK</a><br>
+<a href="$linksgifname2">DOWNLOAD</a><br>
+<img src="$linksgifname2">
+</body></html>
+EOH2
+close H2 ;
+
+open H3, "> $htmlfilename3"
+    or die "Couldn't open '$htmlfilename3' for writing: $!\n" ;
+print H3 htmlheader("Link Charts for $pname, Requirements plus VAMs") ;
+print H3 <<EOH3;
+<a href="linkcharts.html">BACK</a><br>
+<a href="$linksgifname3">DOWNLOAD</a><br>
+<img src="$linksgifname3">
+</body></html>
+EOH3
+close H3 ;
+
+

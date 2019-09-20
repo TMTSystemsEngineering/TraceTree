@@ -1,0 +1,9 @@
+#! /usr/bin/bash
+qwer=0
+echo qwer is $qwer
+if [[ $qwer !=  0 ]]; then echo hi there $qwer; fi
+if [[ $qwer !=  0 ]]; then exit $qwer; fi
+qwer=2
+echo qwer is $qwer
+if [[ $qwer !=  0 ]]; then echo hi there $qwer; fi
+if [[ $qwer !=  0 ]]; then exit $qwer; fi

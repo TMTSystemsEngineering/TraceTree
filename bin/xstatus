@@ -1,0 +1,18 @@
+#! /usr/bin/perl
+
+# This script just queries the status, prints it along with the 
+# date/time, and returns a status code as shown below
+
+require "ttutilsnew.pl" ;
+
+$status = getProcessStatus() ;
+
+$date = `date` ;
+chomp $date ;
+print "xstatus: returning code $status ('" . getProcessStatusEnglish($status) . "') at $date\n" ;
+if ($status == $TT_STATUSES{TT_ERROR})
+{
+    $errmess = getProcessErrorStatus () ;
+    print "   xstatus error message is '$errmess'\n" ;
+}
+exit $status ;

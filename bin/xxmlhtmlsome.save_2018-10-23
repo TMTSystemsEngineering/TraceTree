@@ -1,0 +1,864 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+use DB_File ;
+use Digest::MD5 ;
+
+use XML::Simple;
+require "fileutils.pl" ;
+require "ttutils.pl" ;
+require "xmlutils.pl" ;
+require "tt_projuniq.pl" ;
+
+# for use later when looking for age of xml files
+$now = time ;
+
+# $rootpathname = "/Users/jgrimes/Desktop/VPCShare" ;
+$rootdirname = "ttr" ;
+if (@ARGV) { $pname = $ARGV[0] ; }
+else { die "Usage:\n  $0 projectname\n" ; }
+
+$rootdirname = "$rootdirname/$pname" ;
+print "$0: doing $rootdirname\n" ;
+($doNotVap, $doProjID) = getProjectUniq ($pname) ;
+
+$logfilename = "LogsAndData/$pname.xxmlhtmlsome.out" ;
+open LOG, "> $logfilename" or 
+    die "Couldn't open $logfilename for writing: $!\n" ;
+print "xxmlhtmlsome: opened log file $logfilename\n" ;
+
+# $datehistofilename = "$pname.datehisto.txt" ;
+# open HISTO, "> $datehistofilename" 
+# or die "Couldn't open $datehistofilename for writing: $!\n" ;
+
+$md5name = "LogsAndData/$pname.md5" ;
+tie %md5s, "DB_File", $md5name, O_RDWR, 0666, $DB_HASH
+    or die "Couldn't open '$md5name': $!\n" ;
+
+@baselist = getnodelist ($pname) ;
+
+
+$count = 0 ;
+$updatedcount = 0 ;
+$nbases = scalar @baselist ;
+$wasseqfilename = "" ;
+foreach $basefilename (@baselist)
+{
+  ($basenodename = $basefilename) =~ s/$rootdirname\/// ;
+  $basenodename =~ s/\/(\d+)$/-$1/ ;
+  $basenodename =~ /(\d+)$/ ;
+  $simplenodepathname = "$pname/$basenodename" ;
+
+  $nodenumber = $1 ;
+  $dotfilename = $basefilename  . ".dot" ;
+  $bigdotfilename = $basefilename  . ".big.dot" ;
+  $htmlfilename = $basefilename . ".html" ;
+  $bightmlfilename = $basefilename . ".big.html" ;
+  $vaphtmlfilename = $basefilename . ".vap.html" 
+      unless $doNotVap ;
+  $mapfilename = $basefilename . ".map" ;
+  $bigmapfilename = $basefilename . ".big.map" ;
+  $vapmapfilename = $basefilename . ".vap.map" 
+      unless $doNotVap ;
+  $giffilename = $basefilename . ".gif" ;
+  $biggiffilename = $basefilename . ".big.gif" ;
+  $vapgiffilename = $basefilename . ".vap.gif" 
+      unless $doNotVap ;
+  $xmlfilename = $basefilename . ".xml" ;
+  $attrfilename = $basefilename . ".attr" ;
+  $perttxtfilename = $basefilename . ".perttxt" ;
+
+
+  ($seqfilename = $basefilename) =~ s/(\d+)$/sequence.txt/ ;
+  ($datefilename = $basefilename) =~ s/(\d+)$/dates.txt/ ;
+  if ($seqfilename ne $wasseqfilename)
+  {
+    $wasseqfilename = $seqfilename ;  # used just to see if we need to 
+                                      # look at next one  
+    ####################################################################
+    # seqfilename essentially isolates the directory, i.e. module,     #
+    # name.  So here is where we start a new module.                   #
+    ####################################################################
+    if (! open SEQ, $seqfilename)
+    {
+      warn "Couldn't open $seqfilename for reading: $!\n" ;
+      $existsseqfile = 0 ;
+      @sequence = () ;
+    }
+    else
+    {
+      @sequence = (<SEQ>) ;
+      chomp @sequence ;
+      $existsseqfile = 1 ;    # this doesn't seem to be used.  Odd.
+    }
+
+    ####################################################################
+    # Now open and read the old sequence file if there is one          #
+    ####################################################################
+    $oldseqfilename = "$seqfilename.old" ;   # for comparing with former sequence
+    if (! open OLDSEQ, $oldseqfilename)
+    {
+      warn "Couldn't open $oldseqfilename for reading: $!\n" ;
+      $existsoldseqfile = 0 ;
+      @oldsequence = () ;
+    }
+    else
+    {
+      @oldsequence = (<OLDSEQ>) ;
+      chomp @oldsequence ;
+      $existsoldseqfile = 1 ;    # this doesn't seem to be used.  Odd.
+    }
+
+    close DATES ; # if previous one was open
+    ####################################################################
+    # First we need the old dates, in case this we don't actually      #
+    # read the xml file.  Date file could get pretty full, but it      #
+    # doesn't actually specify which objects are still real, so        #
+    # that's OK.                                                       #
+    ####################################################################
+    %dateofnode = () ;  # get rid of old
+    open DATES, "$datefilename"
+        or warn "Couldn't open $datefilename for reading: $!\n" ;
+    while (<DATES>)
+    {
+      chomp ;
+      ($dnoden, $datestr) = split /\t/ ;
+      $dateofnode{$dnoden} = $datestr ;
+    }
+    open DATES, "> $datefilename" 
+	    or warn "Couldn't open $datefilename for writing: $!\n" ;
+
+    ####################################################################
+    # Now we need a list of all the pngs.  ttutils doesn't currently   #
+    # help us with this.                                               #
+    ####################################################################
+    ($dirname = $seqfilename) =~ s/\/sequence.txt// ; # kinda clumsy
+    @pnglist = () ;  # make sure it's empty
+    @pnglist = getfilelist ($dirname, "\.png\$") ;
+    map {$_ = "$dirname/$_";} @pnglist ;
+    $haspngs = scalar (@pnglist) > 0 ;
+  }
+  
+  ######################################################################
+  # We need to know what the previous and next nodenumbers are in the  #
+  # sequence, both for this run and the previous run ("old").  We      #
+  # assume that nodenumber came from baselist which came from the      #
+  # combined sequences, so findPrevNext will always find the           #
+  # nodenumber at lest in @sequence, though not in @oldsequence.       #
+  ######################################################################
+  ($prevnodenumber, $nextnodenumber) = findPrevNext ($nodenumber, @sequence) ;
+  ($oldprevnodenumber, $oldnextnodenumber) 
+      = findPrevNext ($nodenumber, @oldsequence) ;
+      
+  if (! -e $mapfilename or ! -e $giffilename or ! -e $xmlfilename) 
+  {
+    die "Couldn't find one or more of $mapfilename or $giffilename or $xmlfilename\n" ;
+  }
+  
+  # Whether this html file needs updating depends on three things:
+  # 1) If the previous or next nodes have changed.  That would change
+  #    the previous and next nodes.
+  # 2) If the gif file, map file, xmlfile, or attrfile have changed.  
+  #    We get this from their dates.  Also if the htmlfile doesn't even
+  #    exist.
+  # 3) If any of the png files have changed.  
+
+  $needsupdating = ($oldprevnodenumber != $prevnodenumber) 
+                 || ($oldnextnodenumber != $nextnodenumber) ;
+  print LOG "$basenodename needs updating because of prev/next\n" 
+      if $needsupdating ;
+
+  if (!$needsupdating)
+  {
+    $needsupdating = 
+        targetNeedsUpdatingPlural ($giffilename, 
+				   $mapfilename, 
+				   $xmlfilename,
+				   $attrfilename,
+                           $htmlfilename) ;
+    print LOG "$basenodename needs updating because of gif/map/xml/attr\n" 
+	if $needsupdating ;
+  }
+
+  # We really need to check the png files.  Where do they come in?
+  # We don't bother checking if we already know it needs updating
+  if (!$needsupdating and $haspngs)
+  {
+    @thispnglist = grep (/$nodenumber-\d+.png$/, @pnglist) ;
+    if (@thispnglist)
+    {
+      $needsupdating = targetNeedsUpdatingPlural (@thispnglist, $htmlfilename) ;
+    }
+    print LOG "$basenodename needs updating because of pngs\n" 
+        if $needsupdating ;
+  }
+
+  ######################################################################
+  # OK WE'VE DECIDED.                                                  #
+  ######################################################################
+  next unless $needsupdating ;
+  
+  ($modulename = $basenodename) =~ s/-\d+$// ;
+  $relpath = genrelativepath ($modulename, "") ;   # modulename already relative
+  $relpath =~ s/\/$// ;   # take the slash off the end because we're going to 
+  # put it back in. Yay for consistency and completeness
+  ($localgiffilename = $giffilename) =~ s/^.*\/// ;
+  ($localbiggiffilename = $localgiffilename) =~ s/gif$/big.gif/ ;
+  ($localvapgiffilename = $localgiffilename) =~ s/gif$/vap.gif/ 
+      unless $doNotVap ;
+  ($localhtmlfilename = $htmlfilename) =~ s/^.*\/// ;
+  ($localbightmlfilename = $localhtmlfilename) =~ s/html$/big.html/ ;
+  ($localvaphtmlfilename = $localhtmlfilename) =~ s/html$/vap.html/ 
+      unless $doNotVap ;
+      
+  ######################################################################
+  # To make the header, we need the basenodename, and also the         #
+  # Project ID, if applicable.  Project ID is recorded in perttxt,     #
+  # but we haven't been using that for xxmlhtmlsome so far.  Could     #
+  # get it from attrs.  Have we parsed them yet? Nope. Will need to    #
+  # just get it out of perttxt file, or rewrite a bunch of stuff.      #
+  ######################################################################
+  if ($doProjID)
+  {
+    $projidtxt       = getprojidtxt ($perttxtfilename) ;
+  }
+  $titlestring = $basenodename ;
+  $titlestring .= " / Proj ID $projidtxt" if ($doProjID and $projidtxt) ;
+  $hh = htmlheader ($titlestring, $relpath) ;
+
+  open MAP, "$mapfilename" 
+      or die "Couldn't open mapfilename $mapfilename for reading: $!\n" ;
+  @maplines = (<MAP>) ;
+  close MAP ;
+  $maplines[0] =~ /<map id=.*name="([^"]+)/ ;
+  $name = $1 ;
+
+  open BIGMAP, "$bigmapfilename" 
+      or die "Couldn't open bigmapfilename $bigmapfilename for reading: $!\n" ;
+  @bigmaplines = (<BIGMAP>) ;
+  close BIGMAP ;
+  $bigmaplines[0] =~ /<map id=.*name="([^"]+)/ ;
+  $bigname = $1 ;
+
+  unless ($doNotVap)
+  {
+    open VAPMAP, "$vapmapfilename" 
+	or die "Couldn't open vapmapfilename $vapmapfilename for reading: $!\n" ;
+    @vapmaplines = (<VAPMAP>) ;
+    close VAPMAP ;
+    $vapmaplines[0] =~ /<map id=.*name="([^"]+)/ ;
+    $vapname = $1 ;
+  }
+
+  $ref = eval { XMLin($xmlfilename) };
+  if ($@) 
+  { 
+    print STDERR "basenodename $basenodename htmlfilename $htmlfilename\n" ;
+    print STDERR "$@\n" ; 
+    if ($@ =~ /not well-formed \(invalid token\) at line (\d+), column (\d+),/s)
+    {
+    $errlinenumber = $1 ;
+    $errcolnumber = $2 ;
+    reporterrorinxml ($xmlfilename, $errlinenumber, $errcolnumber) ;
+  }
+  else
+  {
+    print STDERR "Oh well, some other error syntax\n" ;
+  }
+  exit 1 ;
+  }
+
+  $attrlines = "" ;
+  if ( -e $attrfilename)
+  {
+    %attr = parseattributefile ($attrfilename) ; # need way to check 
+                                                 # return.  undef 
+                                                 # doesn't seem to work 
+   $attrlines = "<hr>\n" ;
+   $attrlines .= "<p><b>ATTRIBUTES with values:</b><br>\n" ;
+   $attrlines .= "<table>\n" ;
+
+    @emptyattrs = () ;
+    $zattrcount = 0 ;
+    foreach $attrname (sort keys %attr)
+    {
+      $attrvalue = $attr{$attrname} ;
+      if ($attrvalue ne "")
+      {
+        ################################################################
+        # have to do this split because otherwise html just sticks     #
+        # them together                                                #
+        ################################################################
+        @attrvaluelines = split "\n", $attrvalue ;
+        chomp @attrvaluelines ;
+        @attrvaluelines = htmlquotampgtlt (@attrvaluelines) ;
+        $attrtxt = txttohtmlnopar (@attrvaluelines) ;
+        $attrtxt = "<br>" . $attrtxt if $attrtxt =~ /<br>/ ;
+        $attrlines .= "<tr><td valign=top><b>$attrname</b></td>\n" ;
+        $attrlines .= "<td valign=top>$attrtxt</td></tr>\n" ;
+      }
+      else
+      {
+        if ($attrname =~ /^z-/)
+        {
+          $zattrcount++ ;
+        }
+        else
+        {
+          push @emptyattrs, $attrname ;
+        }
+      }
+    }
+    $attrlines .= "</table>\n" ;   # end of populated attributes table
+    if ($zattrcount) { push @emptyattrs, "$zattrcount empty z- attributes elided" ; }
+    if (scalar @emptyattrs)
+    {
+      $attrlines .= "<p><b>Attributes with no value specified:</b><br>" ;
+      $nattrs = scalar @emptyattrs ;
+      $attrspercolumn = int ($nattrs / 5) ;
+      $attrspercolumn++ if $attrspercolumn*5 < $nattrs ;
+      $attrlines .= "    <font size=-1><table cellpadding=\"1\" cellspacing=\"1\" border=\"0\">\n" ;
+      for ($iattr = 0 ; $iattr < $attrspercolumn ; $iattr++)
+      {
+        $attrlines .= "      <tr>\n" ;
+        for ($jattr = $iattr ; $jattr < $nattrs ; $jattr += $attrspercolumn)
+        {
+          $attrname = $emptyattrs[$jattr] ;
+          $attrlines .= "        <td>$attrname</td>\n" ;
+        }
+        $attrlines .= "      </tr>\n" ;
+      }
+      $attrlines .= "    </table></font>\n\n" ;
+    }
+    $attrlines .= "</p>\n" ;
+  }
+  else
+  {
+    $attrlines = "<p><b>NO ATTRIBUTE FILE</b></p>" ;
+  }
+  
+  ######################################################################
+  # Get some object information                                        #
+  ######################################################################
+  ($moddate, $moddatetype, $mname, $oid, $onum, $localpname, $reportdate, 
+   $isheading, $objURL,
+   $isTableHeader, $isTableRow, $isTableCell
+	 ) = gettoplevelattrs ($ref) ;
+	 
+  $isTablePart = ($isTableHeader or $isTableRow or $isTableCell) ;
+
+  if ($isTableHeader) { $tableheadernodenumber = $nodenumber ; }
+  $nodeNumberToGoTo = $isTablePart ? $tableheadernodenumber : $nodenumber ;
+
+  open HTML, "> $htmlfilename"
+      or die "Couldn't open $htmlfilename for writing: $!\n" ;
+  open BIGHTML, "> $bightmlfilename"
+      or die "Couldn't open $bightmlfilename for writing: $!\n" ;
+  unless ($doNotVap)
+  {
+    open VAPHTML, "> $vaphtmlfilename"
+	or die "Couldn't open $vaphtmlfilename for writing: $!\n" ;
+  }
+  $htmlmd5 = Digest::MD5->new ;
+  $bightmlmd5 = Digest::MD5->new ;
+  $vaphtmlmd5 = Digest::MD5->new 
+      unless $doNotVap ;
+
+  # three possibilities:
+  printhtml ($hh );
+  printbightml($hh );
+  printvaphtml($hh )
+      unless $doNotVap ;
+  $divblock =<<EODIVS;
+    <div class="rage_button_all_modules">
+      <a href=\"$relpath/index.html\">All Modules</a>
+    </div>
+
+    <div class="rage_button_this_module">
+      <a href="index.html#$nodeNumberToGoTo">This Module</a>
+    </div>
+
+    <div class="rage_button_requirement_text">
+      <a href="#reqttext">Requirement Text</a>
+    </div>
+
+    <div class="rage_button_key">
+      <a href="$relpath/key.html" target="_blank">Key</a>
+    </div>
+    <p><br></p> <!-- spacer kludge BOZO -->
+    <p><br></p>
+EODIVS
+  printhtml ($divblock );
+  
+  ######################################################################
+  # Define PREV NEXT and LINK buttons as divblocks                     #
+  ######################################################################
+  $linktodoorsdivblock =<<EOLDIVS;
+    <div class="rage_button_linktodoors">
+      <a href="$objURL">Link to DOORS</a>
+    </div>
+EOLDIVS
+
+  if ($prevnodenumber ne "")
+  {
+      $prevdivblock =<<EOPDIVS;
+    <div class="rage_button_previous">
+      <a href="$prevnodenumber.html">PREVIOUS</a>
+    </div>
+EOPDIVS
+  }
+  if ($nextnodenumber ne "")
+  {
+    $nextdivblock =<<EONDIVS;
+    <div class="rage_button_next">
+      <a href="$nextnodenumber.html">NEXT</a>
+    </div>
+EONDIVS
+  }
+
+  ######################################################################
+  # JIRA Buttons                                                       #
+  ######################################################################
+  # $jirastring = insertjira ("$simplenodepathname object page") ;
+  # printhtml ("<p>\n$jirastring</p>\n") ;
+  ######################################################################
+  ### HERE'S WHERE WE PUT IN PREVIOUS NEXT and LINK TO DOORS BUTTONS   #
+  ######################################################################
+  printhtml ("<p>" );
+  printhtml ($prevdivblock) if $prevnodenumber ne "" ;
+  printhtml ($nextdivblock) if $nextnodenumber ne "" ;
+  printhtml ("<p>$linktodoorsdivblock</p>\n" );
+  printhtml ("</p>\n" );
+  printhtml ("<p><br></p> <!-- spacer kludge BOZO -->\n" );
+  printhtml ("<p><br></p>\n" );
+
+
+  printhtml ("Go to <a href=\"$localbightmlfilename\">Graphic with Object Text</a> (might be big)<br>\n") ;
+  printhtml ("Go to <a href=\"$localvaphtmlfilename\">Graphic with [STDV] Verification Approach text</a> (also big)<br>\n" )
+      unless $doNotVap ;
+  printhtml ("<h3>Trace Tree with Titles (Short Text)</h3>\n") ;
+  printhtml ("<img src=\"$localgiffilename\" usemap=\"#$name\" border=\"1\" />\n" );
+
+  printbightml("Back to <a href=\"$localhtmlfilename\">Graphic Trace Tree without Text</a><br>\n" );
+  printbightml ("Go to <a href=\"$localvaphtmlfilename\">Graphic with [STDV] Verification Approach text</a> (also big)<br>\n" )
+      unless $doNotVap ;
+  printbightml ("<h3>Trace Tree with Object Text</h3>\n") ;
+  printbightml("<img src=\"$localbiggiffilename\" usemap=\"#$bigname\" border=\"1\" />\n" );
+
+  unless ($doNotVap)
+  {
+    printvaphtml ("Go to <a href=\"$localbightmlfilename\">Graphic with Object Text</a> (might be big)<br>\n") ;
+    printvaphtml ("Back to <a href=\"$localhtmlfilename\">Graphic Trace Tree without Text</a><br>\n" );
+    printvaphtml ("<h3>Trace Tree with Attribute \"[STDV] Verif Approach\" Text</h3>\n") ;
+    printvaphtml("<img src=\"$localvapgiffilename\" usemap=\"#$vapname\" border=\"1\" />\n" );
+  }
+
+  printhtml (@maplines );
+  printbightml(@bigmaplines );
+  printvaphtml(@vapmaplines )
+      unless $doNotVap ;
+  printhtml ("\n" );
+  printbightml("\n" );
+  printvaphtml("\n" )
+      unless $doNotVap ;
+
+  printhtml ("<p><a name=\"reqttext\"></a>" );
+  printhtml ("<b>Report date/time:</b> $reportdate<br>\n" );
+  printhtml ("<b>Module baseline") if $moddatetype eq "ModuleBaseline" ;
+  printhtml ("<b>Object Text create/mod") if $moddatetype eq "CreateModDate" ;
+  printhtml (" date/time:</b> $moddate" );
+  printhtml (" (Object Text create/mod date/time not available)" )
+      if $moddatetype eq "ModuleBaseline" ;
+  printhtml ("</p>\n" );
+
+  ######################################################################
+  ### HERE'S WHERE WE REPEAT PREVIOUS NEXT and LINK BUTTONS            #
+  ######################################################################
+  printhtml ("<p>" );
+  printhtml ($prevdivblock) if $prevnodenumber ne "" ;
+  printhtml ($nextdivblock) if $nextnodenumber ne "" ;
+  printhtml ("<p>$linktodoorsdivblock</p>\n" );
+  printhtml ("</p>\n" );
+  printhtml ("<p><br></p> <!-- spacer kludge BOZO -->\n" );
+  printhtml ("<p><br></p>\n" );
+
+  printhtml ("<p>\n" .       "<hr>\n" );
+
+  # lookref does all the work of extracting the requirement from the XML
+  # and HTMLing it.
+  printhtml ("<p>\n" );
+
+  if ($isTablePart)
+  {
+    printhtml ("<p><b>TABLE PART<b>: go "
+            .  "<a href=\"index.html#$nodeNumberToGoTo\">HERE</a>"
+            .  " in the index to see table as a whole.<br>\n" );
+    printhtml ("This part is an invisible header.\n" )
+        unless $isTableCell ;
+    printhtml ("</p>\n" );
+  }
+  
+  if (defined $$ref{"ObjectHeading"}) 
+  { 
+    printhtml ("<p><b>HEADING: $onum</b>&nbsp;&nbsp;&nbsp;\n" );
+    lookref ($$ref{"ObjectHeading"}) ; 
+  }
+  if (defined $$ref{"ObjectShortText"} 
+      and lookinside ($$ref{"ObjectShortText"})) 
+  { 
+    printhtml ("<p><b>SHORT  TEXT:</b>&nbsp;&nbsp;&nbsp;\n" );
+    lookref ($$ref{"ObjectShortText"}) ; 
+  }
+  if (defined $$ref{"ObjectText"} 
+      and lookinside ($$ref{"ObjectText"})) 
+  { 
+    $onum =~ s/\.0-\d+$// ;
+    printhtml ("<p><font size=-1>This requirement is in section $onum</font><br>\n" );
+    printhtml ("<b>REQUIREMENT TEXT:</b><br>\n" );
+    printhtml ("<font size=+1>" );
+    lookref ($$ref{"ObjectText"}) ; 
+    printhtml ("</font>" );
+  }
+
+  printhtml ("</p>\n" );
+
+  printhtml ($attrlines );
+
+  printhtml ("</body>\n</html>\n" );
+
+  close HTML ;
+  close BIGHTML ;
+
+  $htmldigest = $htmlmd5->hexdigest ;
+  $bightmldigest = $bightmlmd5->hexdigest ;
+  $vaphtmldigest = $vaphtmlmd5->hexdigest 
+      unless $doNotVap ;
+  $htmlflagval = $md5s{$htmlfilename} ;
+  $bightmlflagval = $md5s{$bightmlfilename} ;
+  $vaphtmlflagval = $md5s{$vaphtmlfilename} 
+      unless $doNotVap ;
+  $oldhtmldigest = getmd5digest ($htmlflagval) ;
+  $oldbightmldigest = getmd5digest ($bightmlflagval) ;
+  $oldvaphtmldigest = getmd5digest ($vaphtmlflagval) 
+      unless $doNotVap ;
+
+  if ($oldhtmldigest ne $htmldigest)
+  {
+    $md5s{$htmlfilename} = '1,' . $htmldigest ;
+  }
+  if ($oldbightmldigest ne $bightmldigest)
+  {
+    $md5s{$bightmlfilename} = '1,' . $bightmldigest ;
+  }
+  unless ($doNotVap)
+  {
+    if ($oldvaphtmldigest ne $vaphtmldigest)
+    {
+      $md5s{$vaphtmlfilename} = '1,' . $vaphtmldigest ;
+    }
+  }
+
+  $updatedcount++ ;
+}
+continue
+{
+  ######################################################################
+  # WE ALWAYS need to update the DATES file.  We should have           #
+  # nodenumber just fine.  Reportdate is something else again.  If     #
+  # this object was updated, reportdate will be filled in.  Otherwise  #
+  # we have to get it from the old dates, if any.                      #
+  ######################################################################
+  # reportdate is in format yyyy-mm-dd.  we want mm/dd/yyyy
+  $datefordoors = "" ;
+  if ($needsupdating)
+  {
+    ($yyyy, $mm, $dd, @therest) = split "[-: ]", $reportdate ;
+    $datefordoors = "$mm/$dd/$yyyy" ;
+  }
+  else
+  {
+    $datefordoors = $dateofnode{$nodenumber} 
+        if defined $dateofnode{$nodenumber} ;
+  }
+  # should always be dfined, no?
+  #   print "'$reportdate': '$yyyy' '$mm' '$dd' -> '$datefordoors'\n" ;
+  print DATES "$nodenumber\t$datefordoors\n" ;
+  $count++ ;
+  if ($count%100 == 0) 
+  { 
+    print STDERR "$0: Done with $count of $nbases files, updated $updatedcount\r" ;
+  }
+}
+print "$0: Done with $count of $nbases files, updated $updatedcount\n" ;
+untie %md5s ;
+# close HISTO ;
+
+sub lookinside
+{
+  my ($v) = @_ ;
+  my ($reftype) = ref $v ;
+  my ($i) ;
+  my ($innerv, $innerk) ;
+  my ($haschunks) = 0 ;
+
+  if ($reftype) 
+  {
+    if ($reftype eq "ARRAY")
+    {
+      for ($i = 0 ; $i < scalar (@$v) ; $i++)
+      {
+	$innerv = $v->[$i] ;
+	return 1 if lookinside ($innerv) ;
+      }
+    }
+    elsif ($reftype eq "HASH")
+    {
+      foreach $innerk (keys %$v)
+      {
+	if ($innerk eq "Chunk")
+	{
+	  $haschunks = 1 ;
+	  last ;
+	}
+	else 
+	{
+	  $innerv = $$v{$innerk} ;
+	  return 1 if lookinside ($innerv) ;
+	}
+      }
+    }
+  }
+  return $haschunks ;
+}
+
+sub lookref
+{
+  my ($v) = @_ ;
+  my ($reftype) ;
+  my ($i) ;
+  my ($innerv, $innerk) ;
+  my ($chunkv, $chunkreftype) ;
+  my ($innerchunkv) ;
+
+  # print "RAW v=$v\n" ;
+
+  $reftype = ref $v ;
+  if ($reftype) 
+  { 
+    if ($reftype eq "ARRAY")
+    {
+      for ($i = 0 ; $i < scalar (@$v) ; $i++)
+      {
+	$innerv = $v->[$i] ;
+	lookref ($innerv) ;
+      }
+    }
+    elsif ($reftype eq "HASH")
+    {
+      foreach $innerk (keys %$v)
+      {
+	if ($innerk eq "Chunk")
+	{
+	  $chunkv = $$v{$innerk} ;
+	  $chunkreftype = ref $chunkv ;
+	  # print "chunk ref type is $chunkreftype\n" ;
+	  if ($chunkreftype eq "ARRAY")
+	  {
+	    for ($i = 0 ; $i < scalar (@$chunkv) ; $i++)
+	    {
+	      $innerchunkv = $chunkv->[$i] ;
+	      # print "CALLING lookatchunk from array value\n" ;
+	      lookatchunk ($innerchunkv) ;
+	    }
+	  }
+	  elsif ($chunkreftype eq "HASH")
+	  {
+	    # print "CALLING lookatchunk from hash value\n" ;
+	    lookatchunk ($chunkv) ;
+	  }
+	  else { print "HUH????\n" ; }
+	}
+	else 
+	{
+	  $innerv = $$v{$innerk} ;
+	  lookref ($innerv) ;
+	}
+      }
+    }
+    else { print "Huh?\n" ; }
+  }
+  else 
+  {
+    # print "-->$v<--" ; 
+  }
+
+}
+
+sub lookatchunk
+{
+  my ($chunkv) = @_ ;
+  my ($k, $v) ;
+  my ($type) ;
+  my ($text) ;
+  my ($filename) ;
+  my ($chunkk) ;
+  my ($bold, $italic, $underline, $strikethru, $superscript, 
+  $subscript, $newline) ;
+  # print "INSIDE CHUNK\n" ;
+  if (ref $chunkv ne "HASH") { print "UH OH CHUNKV not of type HASH\n" ; }
+  else
+  {
+    ($bold, $italic, $underline, $strikethru, $superscript, 
+    $subscript, $newline) = getchunkattrs ($chunkv) ;
+    printhtml ("<b>") if $bold ;
+    printhtml ("<i>") if $italic ;
+    printhtml ("<u>") if $underline ;
+    printhtml ("<s>") if $strikethru ;
+    printhtml ("<sup>") if $superscript ;
+    printhtml ("<sub>") if $subscript ;
+
+    $type = $$chunkv{"Type"} ;
+    if ($type eq "text")
+    {
+      $text = $$chunkv{"Text"} ;
+      printhtml ($text) unless
+	  ref ($text) eq "HASH" and scalar (keys %$text) == 0 ;
+    }
+    elsif ($type eq "OLE")
+    {
+      $filename = $$chunkv{"Filename"} ;
+      $filename =~ s/^.*\\// ;   # get rid of path and backslash
+      printhtml ("<img src=\"$filename\">" );
+    }
+    elsif ($type eq "URL")
+    {
+      $url = $$chunkv{"Text"} ;
+      printlink ($url );
+    }
+    else {print "UH OH Don't know chunk type $type\n" ; }
+
+    printhtml ("</sub>") if $subscript ;
+    printhtml ("</sup>") if $superscript ;
+    printhtml ("</s>") if $strikethru ;
+    printhtml ("</u>") if $underline ;
+    printhtml ("</i>") if $italic ;
+    printhtml ("</b>") if $bold ;
+
+    printhtml ("<br>") if $newline ;
+    printhtml ("\n" );
+  }
+}
+
+sub getchunkattrs 
+{
+  # assume it's a hash
+  my ($ch) = @_ ;
+  # attrs are: 
+  #   bold, italic, underline, strikethru, superscript, subscript, newline
+  # ignore last, charset
+  my ($bold, $italic, $underline, $strikethru, $superscript, 
+  $subscript, $newline) = (0, 0, 0, 0, 0, 0, 0) ;
+  $bold = 1 if defined $$ch{"bold"} and $$ch{"bold"} eq "true" ;
+  $italic  = 1 if defined $$ch{"italic"} and $$ch{"italic"} eq "true" ;
+  $underline = 1 if defined $$ch{"underline"} and $$ch{"underline"} eq "true" ;
+  $strikethru = 1 if defined $$ch{"strikethru"} and $$ch{"strikethru"} eq "true" ;
+  $superscript = 1 if defined $$ch{"superscript"} and $$ch{"superscript"} eq "true" ;
+  $subscript = 1 if defined $$ch{"subscript"} and $$ch{"subscript"} eq "true" ;
+  $newline = 1 if defined $$ch{"newline"} and $$ch{"newline"} eq "true" ;
+
+  return ($bold, $italic, $underline, $strikethru, $superscript, 
+  $subscript, $newline) ;
+}
+
+# SCALAR
+# ARRAY
+# HASH
+# CODE
+# REF
+# GLOB
+# LVALUE
+
+sub reporterrorinxml # ($inxmlname, $errlinenumber, $errcolnumber) ;
+{
+  my ($fname, $lnum, $cnum) = @_ ;
+  local (*ERRXMLIN) ;
+  open ERRXMLIN, $inxmlname 
+  or die "Couldn't open $inxmlname for reading: $!\n" ;
+  print STDERR "ERROR in $inxmlname, line $lnum, column $cnum\n" ;
+  while (<ERRXMLIN>)
+  {
+    if ($. == $lnum)
+    {
+      print STDERR ;
+      print STDERR ('.' x ($cnum-1)) . "^\n" ;
+      $c = substr $_, $cnum, 1 ;
+      print STDERR "ord of character is " . (ord($c)) . "\n" ;
+      last ;
+    }
+  }
+  close ERRXMLIN ;
+}
+
+# rely on globals!
+sub printlink 
+{
+  my (@text) = @_ ;
+  my $text = $text[0] ;
+  my $linkstring = "<A HREF=\"$text\">$text</A>" ;
+  print HTML $linkstring ;
+  $htmlmd5->add($linkstring) ;
+}
+sub printhtml 
+{
+  my (@text) = @_ ;
+  print HTML @text ;
+  $htmlmd5->add(@text) ;
+}
+sub printbightml
+{
+  my (@text) = @_ ;
+  print BIGHTML @text ;
+  $bightmlmd5->add(@text) ;
+}
+sub printvaphtml
+{
+  my (@text) = @_ ;
+  print VAPHTML @text ;
+  $vaphtmlmd5->add(@text) ;
+}
+
+

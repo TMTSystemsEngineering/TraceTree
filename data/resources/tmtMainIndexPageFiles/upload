@@ -1,0 +1,2 @@
+#! /usr/bin/bash
+rsync -v index.html favicon.ico exp*.png *.css /data/trace

@@ -1,0 +1,1170 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+use XML::Simple;
+use Digest::MD5 ;
+use DB_File ;
+
+require "fileutils.pl" ;
+require "miscutils.pl" ;
+require "ttutils.pl" ;
+require "xmlutils.pl" ;
+require "tt_projuniq.pl" ;
+
+die "Can't tell where I am - \$ENV{\"PWD\"} not defined\n" 
+    if !defined $ENV{"PWD"} ;
+$startdirname = $cwd = $ENV{"PWD"} ;
+
+$rootdirname = "ttr" ;
+if (@ARGV) { $pname = $ARGV[0] ; $rootdirname = "$rootdirname/$pname" ; }
+else { die "Usage:\n  $0 projectname\n" ; }
+print "$0: doing $rootdirname\n" ;
+($doNotVap, $doProjID) = getProjectUniq ($pname) ;
+
+$linkfilename = "$rootdirname/alllinks.txt" ;
+open LINKS, $linkfilename 
+    or die "Couldn't open link file $linkfilename for reading: $!\n" ;
+
+$md5name = "LogsAndData/$pname.md5" ;
+tie %md5s, "DB_File", $md5name, O_RDWR, 0666, $DB_HASH
+    or die "Couldn't open '$md5name': $!\n" ;
+
+# We'll use existence of @salist to trigger processing of attributes
+system 'pwd' ;
+$safilename = "$pname.salist" ;   # Selected Attribute List filename
+print "ssafilename is $safilename\n" ;
+if (-e $safilename)
+{
+  print "Opening $safilename\n" ;
+  open SA, $safilename or die "Couldn't open $safilename for reading: $!\n" ;
+  while (<SA>)
+  {
+    chomp ;
+    s/\s*#.*$// ;   # get rid of comments and any white space before them
+    next if /^\s*$/ ;    # and empty lines (order important)
+    ($modsimplename, $saname) = split /\t/ ;
+    $modsimplename =~ s/ /_/g ;    # a nod to the user - automate conversion 
+                             # of underscores to spaces
+    if (!defined $modsWithSALists{$modsimplename})
+    { $modsWithSALists{$modsimplename} = [ $saname ] ; }
+    else
+    { 
+      $salistref = $modsWithSALists{$modsimplename} ;
+      push @$salistref , $saname ; 
+    }
+  }
+}
+# Now we should have a hash of modules with SA lists, with the lists filled in
+# TEST
+foreach $modsimplename (sort keys %modsWithSALists)
+{
+  $salistref = $modsWithSALists{$modsimplename} ;
+  @salist = @$salistref ;
+}
+
+# get the date/time at which this report was generated
+$reportdatefilename = "LogsAndData/$pname.reportdate" ;
+open RPDT, $reportdatefilename 
+    or die "Couldn't open $reportdatefilename for reading: $!\n" ;
+$reportgendate = <RPDT> ;
+chomp $reportgendate ;
+close RPDT ;
+
+# copy the root files.
+copyfile ("resources/projectIndexPageFiles/key.html", 
+                "$rootdirname/key.html") ;
+copyfile ("resources/projectIndexPageFiles/explanation.html",
+                "$rootdirname/explanation.html") ;
+copyfile ("resources/projectIndexPageFiles/explanationFigure1.png",
+                "$rootdirname/explanationFigure1.png") ;
+copyfile ("resources/projectIndexPageFiles/explanationFigure2.png",
+                "$rootdirname/explanationFigure2.png") ;
+copyfile ("resources/projectIndexPageFiles/tracetreestyles.css",
+                "$rootdirname/tracetreestyles.css") ;
+push @listtocalc, "$rootdirname/key.html",
+                  "$rootdirname/explanation.html",
+                  "$rootdirname/explanationFigure1.png",
+                  "$rootdirname/explanationFigure2.png",
+                  "$rootdirname/tracetreestyles.css" ;
+# copy the buttons.  This needs to be more parametric or list oriented
+copyfile ("resources/buttons/caveat.png",           "$rootdirname/caveat.png") ;
+copyfile ("resources/buttons/explanation.png",      "$rootdirname/explanation.png") ;
+copyfile ("resources/buttons/module_index.png",     "$rootdirname/module_index.png") ;
+copyfile ("resources/buttons/object_id_index.png",  "$rootdirname/object_id_index.png") ;
+copyfile ("resources/buttons/all_modules.png",      "$rootdirname/all_modules.png") ;
+copyfile ("resources/buttons/key.png",              "$rootdirname/key.png") ;
+copyfile ("resources/buttons/requirement_text.png", "$rootdirname/requirement_text.png") ;
+copyfile ("resources/buttons/this_module.png",      "$rootdirname/this_module.png") ;
+copyfile ("resources/buttons/previous.png",         "$rootdirname/previous.png") ;
+copyfile ("resources/buttons/next.png",             "$rootdirname/next.png") ;
+copyfile ("resources/buttons/link_to_doors.png",    "$rootdirname/link_to_doors.png") ;
+push @listtocalc, "$rootdirname/caveat.png",
+                  "$rootdirname/explanation.png",
+                  "$rootdirname/module_index.png",
+                  "$rootdirname/object_id_index.png",
+                  "$rootdirname/all_modules.png",
+                  "$rootdirname/key.png",
+                  "$rootdirname/requirement_text.png",
+                  "$rootdirname/this_module.png",
+                  "$rootdirname/previous.png",
+                  "$rootdirname/next.png",
+                  "$rootdirname/link_to_doors.png" ;
+
+$topindexname = "$rootdirname/index.html" ;
+push @listtocalc, $topindexname ;
+open TOP, "> $topindexname"
+    or die "Couldn't open top $topindexname for writing: $!\n" ;
+print TOP htmlheader ("$pname Trace Tree\n") ;
+
+$divblock =<<EOMODINDDIVS;
+    <h2>$pname Trace Tree</h2>
+    <h3>Report Date: $reportgendate</h3>
+    <p>All links updated at this time.  Requirement contents and 
+      attributes updated if object updated since last time report was run.
+    </p>
+    <div class="rage_button_explanation">
+      <a href="explanation.html" target="_blank">Explanation</a>
+    </div>
+
+    <div class="rage_button_caveat">
+      <a href="explanation.html#caveat" target="_blank">Caveat!</a>
+    </div>
+    <p><br></p> <!-- spacer kludge BOZO -->
+    <p><br></p>
+EOMODINDDIVS
+
+print TOP $divblock ;
+
+# magicdraw interface filename.
+$mdiffilename = "mdif.csv" ;
+$mdifpathname = "$rootdirname/$mdiffilename" ;
+push @listtocalc, $mdifpathname ;
+open MDIF, "> $mdifpathname"
+    or die "Couldn't open magicdraw index file '$mdifpathname' for writing: $!\n" ;
+    
+
+########################################################################
+# JIRA buttons                                                         #
+########################################################################
+# $jirastring = insertjira ("$pname project index") ;
+# print TOP "<p>\n$jirastring</p>\n" ;
+########################################################################
+# "SPECIALS"                                                           #
+########################################################################
+print TOP "<p>\n" ;
+$linkcharthtmlfilename = "$rootdirname/linkcharts.html" ;
+if (-e $linkcharthtmlfilename)
+{
+  # WAS print TOP "<a href=\"linkcharts.html\">Link Charts</a> <i>This function not yet verified</i><br>\n" ;
+  print TOP "<a href=\"linkcharts.html\">Link Charts</a><br>\n" ;
+}
+
+$crreporthtmlfilename = "$rootdirname/CRreport.html" ;
+if (-e $crreporthtmlfilename)
+{
+  print TOP "<a href=\"CRreport.html\">Change Request Report</a><br>\n" ;
+}
+
+$tmtidreporthtmlfilename = "$rootdirname/TMTIDreport.html" ;
+if (-e $tmtidreporthtmlfilename)
+{
+  print TOP "<a href=\"TMTIDreport.html\">TMT ID Report</a><br>\n" ;
+}
+
+$metricshtmlfilename = "$rootdirname/metrics.html" ;
+if (-e $metricshtmlfilename)
+{
+  print TOP "<a href=\"metrics.html\">Metrics</a><br>\n" ;
+}
+
+$modshtmlfilename = "${pname}_mods.html" ;
+$modshtmlpathname = "$rootdirname/$modshtmlfilename" ;
+if (-e $modshtmlpathname)
+{
+  print TOP "<a href=\"$modshtmlfilename\">Recent Modifications</a><br>\n" ;
+}
+
+$modtraceshtmlfilename = "${pname}TracesIndex.html" ;
+$modtraceshtmlpathname = "$rootdirname/$modtraceshtmlfilename" ;
+if (-e $modtraceshtmlpathname)
+{
+  print TOP "<a href=\"$modtraceshtmlfilename\">Full Module Traces</a><br>\n" ;
+}
+
+$attrtraceshtmlfilename = "${pname}.attrtrace.html" ;
+$attrtraceshtmlpathname = "$rootdirname/$attrtraceshtmlfilename" ;
+if (-e $attrtraceshtmlpathname)
+{
+  print TOP "<a href=\"$attrtraceshtmlfilename\">Specific Attribute Traces</a><br>\n" ;
+}
+
+print TOP "<a href=\"$mdiffilename\">DOORS -> MagicDraw Interface File</a><br>\n" ;
+ 
+print TOP "</p>\n" ;
+
+########################################################################
+# We used to do this in a two-column table.  Now we'll put in names    #
+# and descriptions.                                                    #
+########################################################################
+@modlist = getseqdirlist ($pname) ;
+# We want to sort this out so that simple names (modules) are before all 
+# folder names.  That's a bit complicated.
+@sortedmodlist = sortSimpleFolder (@modlist) ;
+# print "\n\n@sortedmodlist\n" ;
+
+print TOP "    <table cellpadding=\"3\" cellspacing=\"3\" border=\"0\">\n" ;
+$oldmprn = '' ;
+$indent = 0 ;
+foreach $modname (@sortedmodlist)
+{
+  ($modsimplename = $modname) =~ s/^$rootdirname\/// ;
+  $description = getdescription ($modname) ;
+
+  ######################################################################
+  # Here we figure out how to separate the module name only from its   #
+  # complete path                                                      #
+  ######################################################################
+  if ($modsimplename =~ /^(.*)\/(.*)$/) # count on greediness
+  {
+    $modpathrootname = $1 ;
+    $modonlyname = $2 ;
+    # print "modpathrootname = '$modpathrootname'    modonly = '$modonlyname'\n" ;
+  }
+  else
+  {
+    $modpathrootname = '' ;
+    $modonlyname = $modsimplename ;
+  }
+
+  if ($modpathrootname ne $oldmprn)
+  {
+    # print "GONNA REFIGURE INDENT AND STUFF\n" ;
+    @oldmprn = split /\//, $oldmprn ;
+    @newmprn = split /\//, $modpathrootname ;
+    ####################################################################
+    # check to see if each element of the mod path root name is the    #
+    # same as old.  If not, it needs to be printed, preceded by the    #
+    # proper indent.  As soon as anything does not match, we're done,  #
+    # subsequent mismatches don't count.  In any case, the final       #
+    # indent is the total.                                             #
+    ####################################################################
+    $foundmismatch = 0 ;
+    for ($indent = 0 ; $indent < scalar(@newmprn) ; $indent++)
+    {
+      $foundmismatch++ if $newmprn[$indent] ne $oldmprn[$indent] ;
+      if ($foundmismatch) 
+      {
+	# print '  ' x $indent . $newmprn[$indent] . "\n" ;
+	# try in future:
+	print TOP '<tr><td align=left style="background-color:antiquewhite;font-family:Arial,sans-serif">' 
+	    . '&nbsp;&nbsp;&nbsp;&nbsp;' x $indent
+	    . $newmprn[$indent] . "</font></td></tr>\n" ;
+      }
+    }
+
+    # Make sure to reset "old" so you don't repeat it each time
+    $oldmprn = $modpathrootname ;
+  }
+  ######################################################################
+  # THIS IS WHERE WE PUT IN CODE TO DO A SIMPLE INDENTATION - split    #
+  # out the path other than the modulename, keep track of that, see    #
+  # if it's different...                                               #
+  ######################################################################
+# print '  ' x $indent . "$modonlyname\n" ;   # put these prints in an html cell
+#  print TOP 
+#      "        <td align=left><a href=\"${modsimplename}/index.html\">" 
+#	  . "$modsimplename</a></td>\n" ;
+  print TOP "      <tr>\n" ;
+  print TOP 
+      "        <td align=left>" 
+          . '&nbsp;&nbsp;&nbsp;&nbsp;' x $indent
+          . "<a href=\"${modsimplename}/index.html\">" 
+	  . "$modonlyname</a></td>\n" ;
+  print TOP
+      "        <td align=left><a href=\"${modsimplename}/index.html\">" 
+	  . "$description</a></td>\n" ;
+  print TOP "      </tr>\n" ;
+}
+print TOP "    </table>\n" ;
+close TOP ;
+
+########################################################################
+# IT WOULD BE GOOD TO GET RID OF chdir IN HERE.  IT MAKES THINGS       #
+# PRETTY DAMNED DIFFICULT                                              #
+########################################################################
+foreach $modname (@modlist)
+{
+  $modcount++ ;
+  chdir ($modname) or die "Couldn't chdir to $modname: $!\n" ;
+
+  if (! -e "sequence.txt")
+  {
+    warn "Can't find $modname/sequence.txt, skipping rest of $modname's index\n" ;
+  }
+  else
+  {
+    open SEQ, "sequence.txt" 
+	or die "Couldn't open $modname/sequence.txt for reading: $!\n" ;
+    @nodelist = () ;
+    while ($nodenumber = <SEQ>)
+    {
+      chomp $nodenumber ;
+      next if $nodenumber eq "" ;
+      push @nodelist, $nodenumber ;
+    }
+    
+    # sort numerically ascending
+    @nodelistsorted = sort {$a <=> $b} @nodelist ;
+
+    push @listtocalc, "$modname/index.html" ;
+    open LIST, "> index.html"
+      or die "Couldn't open index.html in $modname for writing: $!\n" ;
+    $relpath = genrelativepath ($modname, $rootdirname) ;
+    $relpath =~ s/\/$// ;   # take the slash off the end
+
+    print STDERR "     modname=$modname\n" ;
+    ($modsimplename = $modname) =~ s/^$rootdirname\/// ;
+    $modsimplepathname = "$pname/$modsimplename" ;
+    # $jirastring = insertjira ("$modsimplepathname module index") ;
+
+    print LIST  htmlheader ("$modsimplename Index", $relpath) ;  
+    $divblock =<<EOOBJINDDIVS;
+    <h2>Trace Tree Index for $modsimplename</h2>
+    <h3>Report Date: $reportgendate</h3>
+    <p>All links updated at this time.  Requirement contents and 
+      attributes updated if object updated since last time report was run.
+    </p>
+    <div class="rage_button_explanation">
+      <a href="$relpath/explanation.html" target="_blank">Explanation</a>
+    </div>
+
+    <div class="rage_button_caveat">
+      <a href="$relpath/explanation.html#caveat" target="_blank">Caveat!</a>
+    </div>
+
+    <div class="rage_button_module_index">
+      <a href="$relpath/index.html">Module Index</a>
+    </div>
+
+    <div class="rage_button_object_id_index">
+      <a href="objidindex.html" target="_blank">Object ID Index</a>
+    </div>
+    <p><br></p> <!-- spacer kludge BOZO -->
+    <p><br></p>
+EOOBJINDDIVS
+    print LIST $divblock ;
+    # print LIST "<p>$jirastring</p>\n" ;
+
+    push @listtocalc, "$modname/objidindex.html" ;
+    open OBJLIST, "> objidindex.html"
+      or die "Couldn't open objidindex.html in $modname for writing: $!\n" ;
+    print OBJLIST  htmlheader ("$modname Index", $relpath) ; 
+    print OBJLIST "<h2>Object ID Index for $modsimplename</h2>\n" ;
+    ($modsimplename = $modname) =~ s/^$rootdirname\/// ;
+    $nfiles = scalar @nodelist ;
+    $filespercolumn = int ($nfiles / 15) ;
+    $filespercolumn++ if $filepercolumn*15 < $nfiles ;
+    print OBJLIST "    <table cellpadding=\"3\" cellspacing=\"3\" border=\"0\">\n" ;
+    for ($ifile = 0 ; $ifile < $filespercolumn ; $ifile++)
+    {
+      print OBJLIST "      <tr>\n" ;
+      for ($jfile = $ifile ; $jfile < $nfiles ; $jfile += $filespercolumn)
+      {
+	$nodenumber = $nodelistsorted[$jfile] ;
+	$htmlfilename = $nodenumber . ".html" ;
+	print OBJLIST 
+	  "        <td><a href=\"${htmlfilename}\">$nodenumber</a></td>\n" ;
+      }
+      print OBJLIST "      </tr>\n" ;
+    }
+    print OBJLIST "    </table>\n\n" ;
+    close OBJLIST ;
+  
+    $seqliststart =<<EOSEQLISTSTART;
+    <p><a name="sequentialindex"></a><font size="+1"><b>Sequential Requirement Index</b></font><br>
+    Requirements and headings only - no non-requirements<br>
+      
+    <table cellpadding="2" cellspacing="3" border="0">
+      <tr halign="left" valign="top"><td><b>ID</b></td>
+EOSEQLISTSTART
+    $seqliststart .= '<td><b>Proj ID</b></td>' if $doProjID ;
+
+    $seqliststart .= 
+      '<td><b>Requirement Text or Heading</b></td>ATTRCOLHEADERS</tr>' ;
+
+    if (defined  $modsWithSALists{$modsimplename})
+    {
+      $salistref = $modsWithSALists{$modsimplename} ;
+      @salist = @$salistref ;
+      $sacolheaders = "" ;
+      foreach $saname (@salist) { $sacolheaders .= "<td><b>$saname</b></td>" ; }
+      $seqliststart =~ s/ATTRCOLHEADERS/$sacolheaders/ ;
+      $dosalist  = 1 ;
+    }
+    else { $seqliststart =~ s/ATTRCOLHEADERS// ; $dosalist = 0 ; }
+    
+    print LIST $seqliststart ;
+
+    $doingTable = 0 ;
+    $doingRow = 0 ;
+    foreach $nodenumber (@nodelist)
+    {
+      $shortnodepath = "$modsimplename/$nodenumber" ;
+      
+      $xmlfilename = "$nodenumber.xml" ;
+      $attrfilename = "$nodenumber.attr" ;
+      if ($doProjID)
+      {
+        $perttxtfilename = "$nodenumber.perttxt" ;
+	$projidtxt = getprojidtxt ($perttxtfilename) ;
+      }
+
+      ##################################################################
+      # First process the attribute file, even if that seems kind of   #
+      # backward                                                       #
+      ##################################################################
+      # we need to do this always for the magicdrw interface.  Oh well.
+      # if ($dosalist)
+      # {
+      %attrvalue = parseattributefile ($attrfilename) ;
+      # }
+# if ($shortnodepath =~ /egister\//)
+# { print "nodenumber=$nodenumber shortnodepath = $shortnodepath\n" ;
+# print "    attrvalue[dccDocNo] = $attrvalue{'dccDocNo'}\n" ;
+# }
+      ##################################################################
+      # Now process the xml file                                       #
+      ##################################################################
+      $ref = eval { XMLin($xmlfilename) };
+      if ($@) 
+      { 
+        print STDERR "basenodename $basenodename htmlfilename $htmlfilename xmlfilename $xmlfilename\n" ;
+        print STDERR "$@\n" ; 
+# not well-formed (invalid token) at line 17, column 72, byte 597 at /Library/Perl/5.8.1/darwin-thread-multi-2level/XML/Parser.pm line 187
+        if ($@ =~ /not well-formed \(invalid token\) at line (\d+), column (\d+),/s)
+        {
+          $errlinenumber = $1 ;
+          $errcolnumber = $2 ;
+          reporterrorinxml ($xmlfilename, $errlinenumber, $errcolnumber) ;
+        }
+        else
+        {
+          print STDERR "Oh well, some other error syntax\n" ;
+        }
+        next ;
+      }
+      # we need to know if this is a heading - isOutline = true. 
+      ($moddate, $moddatetype, $mname, $oid, $onum, $localpname, $reportdate, 
+       $isheading, $objURL,
+       $isTableHeader, $isTableRow, $isTableCell
+	     ) = gettoplevelattrs ($ref) ;
+      $isTablePart = ($isTableHeader or $isTableRow or $isTableCell) ;
+      # Need to put following parameters in table.  Will do later BOZO
+      # WE'RE GOING TO IGNORE TABLE PARTS OF ANY KIND.  For now
+      unless ($isTablePart)
+      {
+        print MDIF printtriplecsv ($shortnodepath, 'hasModDate', $moddate) . "\n" ;
+        print MDIF printtriplecsv ($shortnodepath, 'hasModDateType', $moddatetype ) . "\n" ;
+        print MDIF printtriplecsv ($shortnodepath, 'hasObjectNumber', $onum ) . "\n" ;
+        print MDIF printtriplecsv ($shortnodepath, 'hasDoorsURL', $objURL ) . "\n" ;
+        print MDIF printtriplecsv ($shortnodepath, 'isHeading', $isheading ) . "\n" ;
+      }
+      ##################################################################
+      # are we already doing a table?                                  #
+      ##################################################################
+      if ($doingTable)
+      {
+        ################################################################
+	# if this is not a table part, we need to close off the        #
+	# previous table, or if this is the start of the next table,                                               #
+        ################################################################
+	if ((!$isTablePart) or $isTableHeader)
+	{
+	  print LIST "        </tr>\n      </table> <!-- end of DOORS table-->\n" ;
+	  $doingTable = 0 ;
+	  $doingRow = 0 ;
+	}
+	else  # We're in the middle of a DOORS table
+	{
+          ##############################################################
+	  # We must assume that we're not going to get a table header  #
+	  # here.  Check it                                            #
+          ##############################################################
+	  if ($isTableRow)  # Need to start a row.  Keep it simple
+	  {
+	    if ($doingRow) 
+	    {
+	      print LIST "        </tr>\n" ;
+	    }
+	    print LIST "        <tr>\n" ;
+	    $doingRow++ ;
+	  }
+	  elsif ($isTableCell)
+	  {
+	    print LIST "          <td>" ;
+	    $hasobjecttext = defined $$ref{"ObjectText"} ;
+	    if ($hasobjecttext and lookinside ($$ref{"ObjectText"})) 
+	    {
+	      $objtxt = '' ; $objhtml = '' ; 
+	      lookref ($$ref{"ObjectText"}, \$objtxt, \$objhtml ) ;
+	      print LIST $objhtml ;
+	    }
+	    else
+	    {
+	      print LIST "&nbsp;" ; # to get a visible cell
+	    }
+	    print LIST "          </td>\n" ;
+	  }
+	  else
+	  {
+	    warn "UH OH How'd we get here, xmlfilename=$xmlfilename\n" ;
+	  }
+	}
+
+      }
+      
+      # Process this if we are not in the middle of a table.  We may go into the start of a table from in here.
+      if (!$doingTable)   # usual case, not a DOORS table (yet)
+      {
+	print LIST "    <tr valign=\"top\">\n" ;
+
+        ################################################################
+	# Is this the start of a table?                                #
+        ################################################################
+	if ($isTableHeader) 
+	{
+          ##############################################################
+	  # We need to start a new DOORS table, and set that as a      #
+	  # mode                                                       #
+          ##############################################################
+	  
+	  $doingTable++ ;
+	  $doingRow=0 ;   # not started a row yet
+	  # We're going to skip the object id in the first column
+	  # First column gets nodenumber as anchor
+# print STDERR "DOING A TABLE $nodenumber\n" ;
+	  print LIST 
+	      "      <td bgcolor=\"#DDDDDD\">" 
+	    . "<a name=\"$nodenumber\"></a>"
+	    . "<a href=\"$nodenumber.html\">" 
+	    . "<font size=\"-1\">table</font></a></td>\n" ;
+
+	  # now start the table in the object text column
+          print LIST "      <td></td>" if $doProjID ;
+	  print LIST "      <td><!-- DOORS TABLE --><table border=1>\n" ;
+	}
+	else     # NOT A DOORS TABLE - now the really usual
+	{
+	  # First column gets nodenumber as anchor
+	  print LIST 
+		  "      <td bgcolor=\"#DDDDDD\">"
+		  . "<a name=\"$nodenumber\"></a>" 
+		  . "<a href=\"$nodenumber.html\">" 
+		  . "$nodenumber</a></td>\n" ;
+	  # THIS IS WHERE WE PUT IN THE PROJECT ID IF APPLICABLE 
+	  if ($doProjID)
+	  {
+	    print LIST
+	         "      <td bgcolor=\"#BBBBBB\">"
+		 . "<a href=\"$nodenumber.html\">"
+		 . "$projidtxt</a></td>\n" ;
+	  }
+
+      # don't remember why lookinside is necessary.  Apparently
+      # you can have a defined hash but no data, which isn't useful.
+      # hasshorttext and hasobjecttext used to not include the lookinside, but 
+      # were always used with it, so they're combined here.  Hope that's OK BOZO
+      $hasheading = defined $$ref{"ObjectHeading"} ;
+      $hasshorttext = defined ($$ref{"ObjectShortText"}) 
+                      and lookinside ($$ref{"ObjectShortText"}) ;
+      $hasobjecttext = defined $$ref{"ObjectText"} 
+                      and lookinside ($$ref{"ObjectText"}) ;
+
+      # Because we're now going to store the html code in a scalar instead of
+      # printing directly, we can go get the code up front.  Makes logic look simpler.
+      # And now we'll also get a simple text version at the same time.  Also simpler.
+      # Passing them by reference so they need to be initialized.
+      $hdrtxt = '' ;  $hdrhtml = '' ;
+      $shrttxt = '' ; $shrthtml = '' ;
+      $objtxt = '' ;  $objhtml = '' ;
+      lookref ($$ref{"ObjectHeading"},   \$hdrtxt,  \$hdrhtml ) if $hasheading ;
+      lookref ($$ref{"ObjectShortText"}, \$shrttxt, \$shrthtml) if $hasshorttext ;
+      lookref ($$ref{"ObjectText"},      \$objtxt,  \$objhtml ) if $hasobjecttext ;
+      # Things are slightly different if this marked as heading.  Is that necessary?
+	  if ($isheading)
+	  {
+	    print LIST "      <td><b>$onum" . "&nbsp;&nbsp;&nbsp;&nbsp;\n$hdrhtml</b>" ;
+        print LIST "<p><u>$shrthtml</u></p>\n" if $hasshorttext ;
+        print LIST "<p>\n$objhtml</p>\n" if $hasobjecttext ;
+	    print LIST "      </td>\n" ;
+	  }
+	  else
+	  {
+	    print LIST "      <td>\n" ;
+	    if ($hasheading)
+	    { 
+	      print LIST "<b>HEADING:&nbsp;&nbsp;&nbsp;\n$hdrhtml</b>" ;
+	      print LIST "<br>" if $hasshorttext or $hasobjecttext ;
+	      print LIST "\n" ;
+	    }
+        print LIST "<u>$shrthtml</u>\n" if $hasshorttext ;
+        print LIST "$objhtml\n" if $hasobjecttext ;
+
+	    print LIST "      </td>\n" ;
+	  }
+	  # need to add routine to make proper csv out of this.  Not to mention object id
+# 	  print "HDRTXT = $hdrtxt objtxt = $objtxt\n" ;
+      print MDIF printtriplecsv ($shortnodepath, 'hasHeading', $hdrtxt) . "\n" if $hasheading ;
+      print MDIF printtriplecsv ($shortnodepath, 'hasShortText', $shrttxt) . "\n" if $hasshorttext;
+      print MDIF printtriplecsv ($shortnodepath, 'hasObjectText', $objtxt) . "\n" if $hasobjecttext;
+
+	  ##################################################################
+	  # OK, done with the object id, heading, short text, and text,    #
+	  # now let's do the selected attributes, if any                   #
+	  ##################################################################
+	  if ($dosalist)
+	  {
+# print "dosalist = $dosalist\n" ;
+	    foreach $saname (@salist)
+	    {
+# print "  saname = '$saname'\n" ;
+	      if (defined $attrvalue{$saname})
+	      {
+		$attrvalue = $attrvalue{$saname} ;
+# print "    attrvalue = $attrvalue\n" ;
+	      }
+	      else
+	      {
+		$attrvalue = "" ;
+# print "    NO attrvalue\n" ;
+	      }
+# print "salist, saname=$saname, attrvalue = '$attrvalue'\n" ;
+	      if ($attrvalue ne "")
+	      {
+		@attrvaluelines = split "\n", $attrvalue ;
+		chomp @attrvaluelines ;
+		@attrvaluelines = htmlquotampgtlt (@attrvaluelines) ;
+		$attrtxt = txttohtmlnopar (@attrvaluelines) ;
+		$attrtxt = "<br>" . $attrtxt if $attrtxt =~ /<br>/ ;
+		# $attrlines .= "<tr><td valign=top><b>$attrname</b></td>\n" ;
+		# $attrlines .= "<td valign=top>$attrtxt</td></tr>\n" ;
+		# DUNNO IF THIS IS GOOD OR NOT
+	      }
+	      else { $attrtxt = "&nbsp;" ; }
+	      print LIST "      <td>$attrtxt</td>\n" ;
+	    }
+	  }
+	  
+	  # Now put some hard-coded (BOZO) attributes in the MDIF file.
+	  print MDIF printtriplecsv ($shortnodepath, 'hasRationale', 
+                                     $attrvalue{'[STD] Rationale'}) . "\n"
+	      if defined $attrvalue{'[STD] Rationale'} 
+                     and $attrvalue{'[STD] Rationale'} ne '' ;
+	  print MDIF printtriplecsv ($shortnodepath, 'hasComments', 
+                                     $attrvalue{'[STD] Comments'}) . "\n"
+	      if defined $attrvalue{'[STD] Comments'} 
+                     and $attrvalue{'[STD] Comments'} ne '' ;
+	  print MDIF printtriplecsv ($shortnodepath, 'hasAutoStatus', 
+                                     $attrvalue{'[STDV] Auto Status'}) . "\n"
+	      if defined $attrvalue{'[STDV] Auto Status'} 
+                     and $attrvalue{'[STDV] Auto Status'} ne '' ;
+	  print MDIF printtriplecsv ($shortnodepath, 'hasSatisConfirmed', 
+                                     $attrvalue{'[STDV] Satis Confirmed'}) . "\n"
+	      if defined $attrvalue{'[STDV] Satis Confirmed'} 
+                     and $attrvalue{'[STDV] Satis Confirmed'} ne '' ;
+	  print MDIF printtriplecsv ($shortnodepath, 'hasConfirmedStatus', 
+                                     $attrvalue{'[STDV] Confirmed Status'}) . "\n"
+	      if defined $attrvalue{'[STDV] Confirmed Status'} 
+                     and $attrvalue{'[STDV] Confirmed Status'} ne '' ;
+	  print MDIF printtriplecsv ($shortnodepath, 'hasStatus', 
+                                     $attrvalue{'[STDV] Status'}) . "\n"
+	      if defined $attrvalue{'[STDV] Status'} 
+                     and $attrvalue{'[STDV] Status'} ne '' ;
+	  print MDIF printtriplecsv ($shortnodepath, 'hasDateCompleted', 
+                                     $attrvalue{'[STDV] Date Completed'}) . "\n"
+	      if defined $attrvalue{'[STDV] Date Completed'} 
+                     and $attrvalue{'[STDV] Date Completed'} ne '' ;
+	  print MDIF printtriplecsv ($shortnodepath, 'hasSMAPFinalVerificationStatus', 
+                                     $attrvalue{'[SMAP] Final Verification Status'}) . "\n"
+	      if defined $attrvalue{'[SMAP] Final Verification Status'} 
+                     and $attrvalue{'[SMAP] Final Verification Status'} ne '' ;
+	  print MDIF printtriplecsv ($shortnodepath, 'hasApplicability', 
+                                     $attrvalue{'Applicability'}) . "\n"
+	      if defined $attrvalue{'Applicability'} 
+                     and $attrvalue{'Applicability'} ne '' ;
+	  print MDIF printtriplecsv ($shortnodepath, 'hasReqID', 
+                                     $attrvalue{'Requirement ID'}) . "\n"
+	      if defined $attrvalue{'Requirement ID'} 
+                     and $attrvalue{'Requirement ID'} ne '' ;
+# Request for TMT.  Need to make these project-specific.  First let's put it in a function.
+# the "triples" hash will be keyed by attribute name and the value is the triple's verb.
+          %triples = (
+	      'TMT ID'                           => 'hasTMTID',
+              'Rationale'                        => 'hasRationale',
+              'Key'                              => 'hasKey', 
+              'Driving'                          => 'hasDriving',
+              'SE Notes'                         => 'hasSENotes',
+              'Overall Verification Description' => 'hasOverallVerificationDescription',
+              'Acceptance State'                 => 'hasAcceptanceState',
+	      ) ;
+	  foreach $triplekey (sort keys %triples)
+	  {
+	    $tripleverb = $triples{$triplekey} ;
+	    print MDIF printtriplecsv ($shortnodepath, $tripleverb, 
+	                               $attrvalue{$triplekey})
+		       . "\n" 
+	        if defined $attrvalue{$triplekey} 
+		       and $attrvalue{$triplekey} ne '' ;
+	  }
+
+	      
+	}
+
+	    
+	    
+	print LIST "    </tr>\n" ;
+      }
+    }
+    print LIST "    </table>\n" ;
+  }
+  print LIST "  </body>\n</html>\n" ;
+  close LIST ;
+  chdir ($startdirname) ;
+}
+print TOP "  </body>\n</html>\n" ;
+close TOP ;
+
+# Done with index htmls.  Now finish up the MDIF file
+$linkfilename = "$rootdirname/alllinks.txt" ;
+$exampleinput =<<EOEX;
+/2009-02-26_GRAIL_from_LM/L3_PL	1	ModuleBaseline	2008-12-05 10:40:41
+/2009-02-26_GRAIL_from_LM/L3_PL	2	ModuleBaseline	2008-12-05 10:40:41
+/2009-02-26_GRAIL_from_LM/L3_PL	59	t	/2009-02-26_GRAIL_from_LM/L2_PRD_	161
+/2009-02-26_GRAIL_from_LM/L3_PL	60	t	/2009-02-26_GRAIL_from_LM/L2_PRD_	161
+/2009-02-26_GRAIL_from_LM/L3_LV	4	CreateModDate	2008-03-05 07:34:59
+EOEX
+# read the link file and store the data away.
+
+foreach $linkline (<LINKS>)
+{
+  chomp $linkline ;
+  ######################################################################
+  # there are three kinds of link lines, as seen in example.  We       #
+  # don't care bout ModuleBaseline vs CreateModDate, so really just    #
+  # two.  If it's a link, we store that link info.  If it's an         #
+  # object, we look at the module and object number.  In either case,  #
+  # we don't bother if it's L4.  Could extend that list to ignore.     #
+  ######################################################################
+
+  if ($linkline !~ /(ModuleBaseline|CreateModDate)/)
+  {
+    ($mods, $objs, $t, $modt, $objt) = split (/\t/, $linkline) ;
+    die "UH OH a supposed link line doesn't have a 't' in its middle:\n" 
+        . "'$linkline'\n" unless $t eq 't' ;;
+    $mods =~ s/^\/$pname\/// ;   # eliminate the common project name
+    $modt =~ s/^\/$pname\/// ;   # eliminate the common project name
+    # print "$modt,$objt flows down to $mods,$objs\n" ;
+    $objidt = "$modt/$objt" ;
+    $objids = "$mods/$objs" ;
+    print MDIF printtriplecsv ($objidt,'hasChild',$objids) . "\n" ;
+  }
+}
+close LINKS ;
+close MDIF ;
+
+
+########################################################################
+# Now, at end, we calculate the md5s and flags.  Would be nice to do   #
+# this while generating, but that's quite a bother.  Shouldn't be too  #
+# inefficient to reread all the index files, even the biggest.         #
+########################################################################
+foreach $filename (@listtocalc)
+{
+  calcandflag ($filename) ;
+}
+untie %md5s ;
+
+
+sub ismodule # ($dirname, @dirlist) 
+{
+  my ($dirname, @dirlist) = @_ ;
+  my ($ismodule, $testname) ;
+  $ismodule = 1 ;
+  foreach $testname (@dirlist)
+  {
+    next if $testname eq $dirname ;   # if self, don't test!
+    next unless $testname =~ /^$dirname\// ;    # if testname is not substring
+                                                # of dirname, keep looking
+    $ismodule = 0 ;   # we found that dirname is a substring of testname,
+                      # so this isn't a module
+    last ;
+  }
+  # experiment.  If it seems to be a module, check to see if there's 
+  # anything in it. 
+  if ($ismodule)
+  {
+    @contents = getfilelist ($dirname) ;
+    if ( scalar @contents == 0 ) 
+    { 
+      print "  excluding $dirname, no contents\n" ;
+      $ismodule = 0 ; 
+    }
+  }
+  return $ismodule ;
+}
+
+sub lookinside
+{
+  my ($v) = @_ ;
+  my ($reftype) = ref $v ;
+  my ($i) ;
+  my ($innerv, $innerk) ;
+  my ($haschunks) = 0 ;
+
+  if ($reftype) 
+  {
+    if ($reftype eq "ARRAY")
+    {
+      for ($i = 0 ; $i < scalar (@$v) ; $i++)
+      {
+	$innerv = $v->[$i] ;
+	return 1 if lookinside ($innerv) ;
+      }
+    }
+    elsif ($reftype eq "HASH")
+    {
+      foreach $innerk (keys %$v)
+      {
+	if ($innerk eq "Chunk")
+	{
+	  $haschunks = 1 ;
+	  last ;
+	}
+	else 
+	{
+	  $innerv = $$v{$innerk} ;
+	  return 1 if lookinside ($innerv) ;
+	}
+      }
+    }
+  }
+  return $haschunks ;
+}
+
+sub lookref
+{
+  my ($v, $txtref, $htmlref) = @_ ;
+  my ($reftype) ;
+  my ($i) ;
+  my ($innerv, $innerk) ;
+  my ($chunkv, $chunkreftype) ;
+  my ($innerchunkv) ;
+
+# print "RAW v=$v\n" ;
+
+  $reftype = ref $v ;
+  if ($reftype) 
+  { 
+    if ($reftype eq "ARRAY")
+    {
+      for ($i = 0 ; $i < scalar (@$v) ; $i++)
+      {
+        $innerv = $v->[$i] ;
+        lookref ($innerv, $txtref, $htmlref) ;
+      }
+    }
+    elsif ($reftype eq "HASH")
+    {
+      foreach $innerk (keys %$v)
+      {
+        if ($innerk eq "Chunk")
+        {
+          $chunkv = $$v{$innerk} ;
+          $chunkreftype = ref $chunkv ;
+          # print "chunk ref type is $chunkreftype\n" ;
+          if ($chunkreftype eq "ARRAY")
+          {
+            for ($i = 0 ; $i < scalar (@$chunkv) ; $i++)
+            {
+              $innerchunkv = $chunkv->[$i] ;
+              # print "CALLING lookatchunk from array value\n" ;
+              lookatchunk ($innerchunkv, $txtref, $htmlref) ;
+            }
+          }
+          elsif ($chunkreftype eq "HASH")
+          {
+            # print "CALLING lookatchunk from hash value\n" ;
+            lookatchunk ($chunkv, $txtref, $htmlref) ;
+          }
+          else { print "HUH????\n" ; }
+        }
+        else 
+        {
+          $innerv = $$v{$innerk} ;
+          lookref ($innerv, $txtref, $htmlref) ;
+        }
+      }
+    }
+    else { print "Huh?\n" ; }
+  }
+  else 
+  {
+    # print "-->$v<--" ; 
+  }
+    
+}
+
+sub lookatchunk
+{
+  my ($chunkv, $txtref, $htmlref) = @_ ;
+  my ($k, $v) ;
+  my ($type) ;
+  my ($text) ;
+  my ($filename) ;
+  my ($chunkk) ;
+  my ($bold, $italic, $underline, $strikethru, $superscript, 
+      $subscript, $newline) ;
+      
+  if (ref $chunkv ne "HASH") { print "UH OH CHUNKV not of type HASH\n" ; }
+  else
+  {
+    ($bold, $italic, $underline, $strikethru, $superscript, 
+      $subscript, $newline) = getchunkattrs ($chunkv) ;
+    $$htmlref .= "<b>" if $bold ;
+    $$htmlref .= "<i>" if $italic ;
+    $$htmlref .= "<u>" if $underline ;
+    $$htmlref .= "<s>" if $strikethru ;
+    $$htmlref .= "<sup>" if $superscript ;
+    $$htmlref .= "<sub>" if $subscript ;
+
+    $type = $$chunkv{"Type"} ;
+    if ($type eq "text")
+    {
+      $text = $$chunkv{"Text"} ;
+      $$htmlref .= $text unless
+	      ref ($text) eq "HASH" and scalar (keys %$text) == 0 ;
+      $$txtref  .= $text unless
+	      ref ($text) eq "HASH" and scalar (keys %$text) == 0 ;
+    }
+    elsif ($type eq "OLE")
+    {
+      $filename = $$chunkv{"Filename"} ;
+      $filename =~ s/^.*\\// ;   # get rid of path and backslash
+      $$htmlref .= "<img src=\"$filename\">" ;
+      $$txtref  .= "<img>" ;  # work OK? brackets any problem
+    }
+    elsif ($type eq "URL")
+    {
+      $url = $$chunkv{"Text"} ;
+      $$htmlref .= "<A HREF=\"$url\">$url</A>" ;
+      $$txtref  .= $url ;
+    }
+    else {print "UH OH Don't know chunk type $type\n" ; }
+
+    $$htmlref .= "</sub>" if $subscript ;
+    $$htmlref .= "</sup>" if $superscript ;
+    $$htmlref .= "</s>" if $strikethru ;
+    $$htmlref .= "</u>" if $underline ;
+    $$htmlref .= "</i>" if $italic ;
+    $$htmlref .= "</b>" if $bold ;
+
+    $$htmlref .= "<br>" if $newline ;
+    $$txtref .= "\n" if $newline ;
+    $$htmlref .= "\n" ;
+  }
+}
+
+sub getchunkattrs 
+{
+  # assume it's a hash
+  my ($ch) = @_ ;
+  # attrs are: 
+  #   bold, italic, underline, strikethru, superscript, subscript, newline
+  # ignore last, charset
+  my ($bold, $italic, $underline, $strikethru, $superscript, 
+      $subscript, $newline) = (0, 0, 0, 0, 0, 0, 0) ;
+  $bold = 1 if defined $$ch{"bold"} and $$ch{"bold"} eq "true" ;
+  $italic  = 1 if defined $$ch{"italic"} and $$ch{"italic"} eq "true" ;
+  $underline = 1 if defined $$ch{"underline"} and $$ch{"underline"} eq "true" ;
+  $strikethru = 1 if defined $$ch{"strikethru"} and $$ch{"strikethru"} eq "true" ;
+  $superscript = 1 if defined $$ch{"superscript"} and $$ch{"superscript"} eq "true" ;
+  $subscript = 1 if defined $$ch{"subscript"} and $$ch{"subscript"} eq "true" ;
+  $newline = 1 if defined $$ch{"newline"} and $$ch{"newline"} eq "true" ;
+
+  return ($bold, $italic, $underline, $strikethru, $superscript, 
+      $subscript, $newline) ;
+}
+
+# SCALAR
+# ARRAY
+# HASH
+# CODE
+# REF
+# GLOB
+# LVALUE
+
+sub reporterrorinxml # ($inxmlname, $errlinenumber, $errcolnumber) ;
+{
+  my ($fname, $lnum, $cnum) = @_ ;
+  local (*ERRXMLIN) ;
+  open ERRXMLIN, $inxmlname 
+      or die "Couldn't open $inxmlname for reading: $!\n" ;
+  print STDERR "ERROR in $inxmlname, line $lnum, column $cnum\n" ;
+  while (<ERRXMLIN>)
+  {
+    if ($. == $lnum)
+    {
+      print STDERR ;
+      print STDERR ('.' x ($cnum-1)) . "^\n" ;
+      $c = substr $_, $cnum, 1 ;
+      print STDERR "ord of character is " . (ord($c)) . "\n" ;
+      last ;
+    }
+  }
+  close ERRXMLIN ;
+}
+
+sub getdescription # ($modname) 
+{
+  my ($modname) = @_ ;
+  my ($descfilename) = "$modname/moduleDescription.txt" ;
+  local (*DESCINPUT) ;
+
+  if(open DESCINPUT, $descfilename)
+  {
+    my ($description) = <DESCINPUT> ;
+    close DESCINPUT ;
+    return $description ;
+  }
+  else
+  {
+    warn "Couldn't open '$descfilename' for reading: $!\n" ;
+    return "" ;
+  }
+  return "" ;   # shouldn't get here but ...
+}
+
+sub calcandflag # ($filename)  
+{
+  my ($filename) = @_ ;
+  my ($digest) = calcmd5digest ($filename) ;
+#  print "calcandflag: filename=$filename\n" ;
+  if (getmd5digest($md5s{$filename}) ne $digest)
+  {
+    $md5s{$filename} = '1,' . $digest ;
+  }
+}
+
+
+# FOR PRINTING TRIPLE, WE ASSUME NOTHING UNTOWARD IN first two elements
+# but there is the matter of new-lines...
+sub printtriplecsv # (node,rel,directobject) # could generalize, but...
+{
+  my ($node, $rel, $do) = @_ ;
+  my $result ;
+  $result = "$node,$rel," ;
+  $do =~ s/"/""/g ;
+  chomp $do ;
+  $result .= '"' . $do . '"' ;
+  return $result ;
+}
+ 
+# sort by half levels if applicable
+# We'll look for any L3 or L3_5 L-digit or L-digit-_5 directly after a / character, 
+# since these are pathnames.  Also have to compare stuff before the slash.  
+# Hopefully no folders will have L3_5 format to conflict, but it shouldn't 
+# matter anyway.  Not too cool, though.
+sub byHalfLevels
+{
+  my ($aroot, $amain, $adec, $broot, $bmain, $bdec)  ;
+  if ($a =~ /^(.*)\/L(\d+)(_5)?/)
+  {
+    ($aroot, $amain, $adec) = ($1, $2, $3) ;
+    if ($b =~ /^(.*)\/L(\d+)(_5)?/ )
+    {
+      ($broot, $bmain, $bdec) = ($1, $2, $3) ;
+      if ($aroot eq $broot and $amain == $bmain and $adec ne $bdec)
+      {
+	if ($bdec eq '_5') { return -1 ; }
+	else               { return  1 ; }
+      }
+      # otherwise just do the usual
+    }
+  }
+  return $a cmp $b ;
+}
+
+########################################################################
+# sort simple names before folder names, recursively.  Also by         #
+# half-levels, if applicable, e.g. L3 before L3.5 .  Remember the '.'  #
+# will be an underscore, not a . ;                                     #
+########################################################################
+# @sortedmodlist = sortSimpleFolder (@modlist) ;
+sub sortSimpleFolder # (@modlist)
+{
+  my (@mlist) = sort byHalfLevels @modlist ;
+  my ($item, $folder, $name, %foldercontents, $fref, @folderlist) ;
+  my ($result, @result) ;
+  foreach $item (@mlist)
+  {
+    $item =~ /^(.*)\/(.*)$/ ;
+    $folder = $1 ; $name = $2 ;
+    # print "$item\t $folder\t$name\n" ;
+    unless (exists $foldercontents{$folder})
+    {
+      $foldercontents{$folder} = [ ] ;
+    }
+    $fref = $foldercontents{$folder} ;
+    push @$fref, $name ;
+  }
+  @folderlist = sort byHalfLevels keys %foldercontents ;
+  # print "\t\tFOLDERLIST = @folderlist\n" ;
+  foreach $folder (@folderlist) 
+  {
+    # print "FOLDER = $folder\n" ;
+    $fref = $foldercontents{$folder} ;
+    foreach $name (@$fref)
+    {
+      # print "\t\t\tNAME = $name\n" ;
+      $result = "$folder/$name" ;
+      push @result, $result ;
+    }
+  }
+  return @result ;
+}
+
+

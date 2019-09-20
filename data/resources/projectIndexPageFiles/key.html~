@@ -1,0 +1,49 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head><title>Key to Trace Tree</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <link href="tracetreestyles.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+  <h2 align="center">Key to Trace Tree Diagrams</h2>
+  <p>The rectangles representing requirements are colored as follows:</p>
+<DL compact>
+  <DT>Yellow</DT><DD>The requirement that is the subject of this 
+                  page</DD>
+  <DT>Yellow with Red Outline</DT><DD>Same as yellow; red outline 
+                  indicates that this requirement's Object Text 
+                  modification date is unknown, and has been replaced 
+                  with its module's latest baseline date for purposes of 
+                  comparison with other requirements (see Red and pink 
+                  below)</DD>
+  <DT>Blue</DT><DD>Requirements that flow down to or from the subject
+                  requirement, and have Object Text modification dates 
+                  earlier or later, respectively, than the subject 
+		  requirement's Object Text modfication date, i.e. 
+		  <b>conforms to ideal time</b>.</DD>
+  <DT>Red</DT><DD>Requirements, either upstream or downstream, that have 
+                  Object Text modification dates later or earlier, 
+                  respectively, than the subject requirement's Object 
+		  Text modification date, i.e., <b>does not conform to 
+		  ideal time</b>.</DD>
+  <DT>Pink</DT><DD>Same as red, except that the up- or downstream 
+                   object's modification date is based on the its 
+                   module's most recent baseline date instead of that of 
+                   its Object Text (indicates that the most recent 
+                   baseline happened more recently than the most recent 
+                   modification date of the requirement).</DD>
+</DL>
+<p>The idea behind the red and pink markings is that a higher level 
+requirement should have an earlier modification date than a lower level 
+requirement, given that flowdown has occurred in the expected top to 
+bottom order.  Of course, this doesn't always hold, and sometimes for 
+good reason.  <i>Caveat emptor</i>.</p>
+
+<p>Baselining of a module wipes out the individual histories of the 
+requirements in a module.  The history can be obtained by opening 
+previous baselines in DOORS, but this action is prohibitively difficult 
+when done in bulk as is the case for the production of this trace 
+tree.</p>
+
+</body>
+</html>

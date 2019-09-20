@@ -1,0 +1,1478 @@
+﻿
+/** License Terms
+ * 
+ * Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013>, California 
+ * Institute of Technology ("Caltech").  U.S. Government sponsorship 
+ * acknowledged.
+ * 
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without 
+ * modification, are permitted provided that the following conditions are 
+ * met:
+ * 
+ * 
+ *  *   Redistributions of source code must retain the above copyright 
+ *      notice, this list of conditions and the following disclaimer.
+ * 
+ *  *   Redistributions in binary form must reproduce the above copyright 
+ *      notice, this list of conditions and the following disclaimer in the 
+ *      documentation and/or other materials provided with the 
+ *      distribution.
+ * 
+ *  *   Neither the name of Caltech nor its operating division, the Jet 
+ *      Propulsion Laboratory, nor the names of its contributors may be 
+ *      used to endorse or promote products derived from this software 
+ *      without specific prior written permission.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS 
+ * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED 
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A 
+ * PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER 
+ * OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, 
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, 
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR 
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING 
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS 
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+// main, needs to be included by stub that specifies project list
+
+pragma runLim, 0
+
+//////////////////////////////////////////////////////////////////
+// PUT THE CONFIGURATION IN AN INCLUDE FILE, then select the 
+// appropriate config file
+// #include "dumpprojects_CONFIGmac.dxl"
+// #include "dumpprojects_CONFIGsscaedev2.dxl"
+#include "dumpprojects_CONFIG_TMT.dxl"
+//////////////////////////////////////////////////////////////////
+
+// Some globals which will contain the paths including the project name
+string prootdirname
+string pname
+Stream progressoutput = null
+Stream logoutput = null
+Stream alllinkoutput = null
+
+////////////////////////////////////////////////////////////////////////
+// the progress and log files always go in the remote location, since //
+// unix tools will use it. progressfilename should have been          //
+// previously defined                                                 //
+////////////////////////////////////////////////////////////////////////
+// We're going to add LogsAndData as the directory for logs.  
+// Makes sense, no?
+string progressfilepath = remoterootpath "\\LogsAndData\\" progressfilename
+string logfilepath = remoterootpath "\\LogsAndData\\" logfilename
+string statusfilepath = remoterootpath "\\LogsAndData\\" statusfilename
+
+print "projectlist is\n"
+for (iproj = 0 ; iproj < sizeof projectlist ; iproj++) 
+{
+  print "  projectlist[" iproj "] is " projectlist[iproj] "\n"
+}
+
+// BE CAREFUL of PMD|TRaiNED|TRGS - these are specifically for
+// Phaeton, but PMD, for example, could easily match something else
+Regexp ignoremoduleRE = regexp "([tT]emplate|L3_PAAD|wont open)"
+Regexp ignorefolderRE = regexp // -
+  "(Archive|old MET|Old Modules|Change Proposal System|" // -
+  "[tT]emplate|Obsolete|OBSOLETE|Practice|Legacy|" // -
+  "Marked for Deletion|Inactive|PDL VnV|DELETED MODULES|" // -
+  "OLD |Old | OLD" // -
+  "SIM Test Modules|SOS Folder|MSAP FDDs|PSMP|" // -
+  "DSN/MGSS|" // -
+  "08\\-10\\-27 Grail from LM|Change Proposal System|" // -
+  "ICD Transfer Module|" // -
+  "PMD|TRaiNED|TRGS|" // -
+  "[0-9][0-9][0-9][0-9][0-9][0-9] GRAIL from LM|" // -
+  "z - OCO-2 Legacy|z-obsolete|" // -
+  "Progress Demo 1|" // -
+  "2011-01-24|110124|110525|110531|110601|110623|110721|" // -
+  "110722|110727|110822|110906|111003|111017|111109|" // -
+  "111115|111212|111228|120110|120123|120206|120220|" // -
+  "120312|120327|120416|120514|120515|120611|120625|120723|" // -
+  "120809|120820|120917|121015|121114|121126|121210|" // -
+  "130116|130211|130225|130312|130329|130408|" // -
+  "130422|130506|130522|130603|130620|130704|" // -
+  "130715|130729|130812|130827|131121|131216|" // -
+  "140127|140224|140310|140324|" // -
+  "JPL Flight Spares|" // -
+  "LD_0a|" // -
+  "GRAIL Delivery)"
+  // won't help TGO - deletes too much
+     //"L3 EMCS|L3 HISCI|L3 ICD|L3 MAGIE|L3_MATMOS" // -
+
+Regexp shallRE = regexp "(SHALL|Shall|shall)"
+
+
+string sysattrincludelist[] = { // -
+       "Created By", // -
+       "Created On", // -
+       "Last Modified By", // -
+       "Last Modified On" // -
+    }
+string userattrexcludelist[] = { // -
+       "linkupto", // -
+       "L3 ISRD ID", // -
+       // "traced links", // -
+       "L5xlsNumber", // -
+       "Is Verbatim From Parent" // -
+       "RTF NonShpPict" // -
+       "RTF ShpPict" // -
+    }
+
+////////////////////////////////////////////////////////////////////////
+// START PUTTING FUNCTIONS IN PROTOTYPES AND BODIES BELOW             //
+// but somehow that doesn't work.
+////////////////////////////////////////////////////////////////////////
+
+bool isMemberOf (string candidate, string thelist[])
+{
+  int i
+  for (i = 0 ; i < sizeof thelist ; i++) 
+  {
+    if (candidate == thelist[i]) return true
+  }
+  return false
+}
+
+// pwlogdate (string) print and write to log
+// assumes global logoutput to be a writable stream
+// prepends date 
+void pwlogdate (string s)
+{
+  string toprint = dateAndTime(today()) ": " s
+  print toprint
+  logoutput << toprint
+  flush (logoutput)
+}
+
+// pwlog (string) print and write to log
+// assumes global logoutput to be a writable stream
+void pwlog (string s)
+{
+  print s
+  logoutput << s
+  flush (logoutput)
+}
+
+Regexp dsnRE = regexp "^/DSN/"
+Regexp desc800RE = regexp "^8[0-9][0-9]\\-"
+// return true if this module doesn't begin with "/DSN"
+// or if it does begin with "/DSN", its description begins
+// with 8\d\d-
+bool checkDSNdescription (string smname, string description)
+{
+  if (!dsnRE smname) return true
+  if ( desc800RE description) return true 
+  pwlogdate ("Skipping " smname ", DSN without desc=8nn-...\n")
+  return false 
+}
+
+// kludge BOZO for now - replace "^/MGSS/" "/DSN/MGSS"
+// not even really necessary now, since MGSS is excluded.  
+// But keep it in for memory of how to do it
+string modFullName (string fullname)
+{
+// print "In modFullName: pname = '" pname "' fullname = '" fullname "'\n"
+  // for /DSMS/MGSS
+  if (fullname[0:4] == "/MGSS") return "/DSN" fullname
+  if (fullname[0:4] == "/SCaN") return "/DSN" fullname
+  if (fullname[0:7] == "/2-23-07") return "/OCO" fullname
+  if (fullname[0:6] == "/5-2-07") return "/OCO" fullname
+
+  // for GRAIL
+  if (pname[0:17] == "GRAIL - LM and JPL")
+  {
+    if (fullname[0:10] == "/LM Modules") // -
+       return "/" pname fullname
+    if (fullname[0:11] == "/JPL Modules") // -
+       return "/" pname fullname
+  }
+
+  // for GRACE Follow-on
+  if (pname[0:7] == "GRACE-FO")
+  {
+    if (fullname[0:4] == "/GFO ") // -
+       return "/" pname fullname
+  }
+
+  // for OCO-2 
+  // NOTE: only difference between GRAIL and OCO-2 "JPL Modules" is
+  // a space before the J in OCO-2
+  // If they correct that, we'll need to figure out the containing 
+  // parent.  YUCK.
+
+
+  if (pname[0:4] == "OCO-2")
+  {
+    if (fullname[0:12] == "/ OSC Modules") // -
+      return "/" pname fullname
+    if (fullname[0:12] == "/ JPL Modules") // -
+      return "/" pname fullname
+    if (fullname[0:14] == "/Level 3 and 4 ") // -
+      return "/OCO-2/ OSC Modules" fullname
+  }
+
+// print "IN modFullName pname = " pname "\n"
+
+  // for MSAP, because requirements are now in sub-project
+  if (pname[0:3] == "MSAP" && fullname[0:12] == "/Requirements")
+       return "/" pname fullname
+
+  if (pname[0:6] == "Phaeton" && fullname[0:5] == "/OPALS")
+       return "/" pname fullname
+
+  // for WISE - two subprojects
+  if (pname[0:3] == "WISE")
+  {
+    if (fullname[0:19] == "/BALL - WISE Level 4")
+      return "/" pname fullname
+    if (fullname[0:13] == "/BATC Baseline")
+      return "/" pname fullname
+  }
+  return fullname
+}
+
+// replace anything other than alphanumeric, underscore, or dash 
+// with underscore
+string goodname (string s)
+{
+  Buffer b = create
+  int len = length (s)
+  int i
+
+  for (i = 0 ; i < len ; i++)
+  {
+    char c = s[i]
+    // only good are alphanumeric, underscore, and dash
+    if (isalnum(c) || c == '_' || c == '-') b += c
+    else
+    {
+      b += '_'    // replace it with an underscore
+    }
+  }
+  string sb = stringOf(b)
+  delete b
+  return sb
+}
+
+// replace forward slash with backward slash, and anything
+// other than alphanumeric, underscore, or dash with underscore
+string gooddosname (string s)
+{
+  Buffer b = create
+  int len = length (s)
+  int i
+
+  for (i = 0 ; i < len ; i++)
+  {
+    char c = s[i]
+    if (isalnum(c) || c == '_' || c == '-') b += c
+    else if (c == '/') b += '\\'
+    else b += '_'
+  }
+  string sb = stringOf(b)
+  delete b
+  return sb
+}
+
+// replace anything other than alphanumeric, underscore, dash,
+// or forward slash with underscore
+// we're not trying to convert dos to unix, so backward slash
+// gets replaced with underscore also.  may want to change
+string goodunixname (string s)
+{
+  Buffer b = create
+  int len = length (s)
+  int i
+
+  for (i = 0 ; i < len ; i++)
+  {
+    char c = s[i]
+    // only good are alphanumeric, underscore, and dash
+    if (isalnum(c) || c == '_' || c == '-' || c == '/') b += c
+    else
+    {
+      b += '_'    // replace it with an underscore
+    }
+  }
+  string sb = stringOf(b)
+  delete b
+  return sb
+}
+
+
+bool dodebug = false
+
+Date baddate = "12/31/70"
+Skip moduledates = createString
+Skip objectlist
+Skip donelist   // slightly different use than objectlist
+string sfake = "fake"
+string sfakealso
+
+Date comparedate    // damn globals
+
+void askcontinue(string message)
+{
+  if (!(confirm message "\nContinue?")) halt
+}
+
+Date getobjtxtmoddate(Object obj)
+{
+  if (null obj) return null
+  if (isOutline (obj)) return null  // wouldn't have Object Text
+
+  Date oldDate
+  Date newDate
+  History h
+  HistoryType ht
+  Date objtextmoddate = null
+  Date objcreatedate = null
+
+  int objan = obj."Absolute Number"
+
+  bool isFirstH = true
+  for h in obj do 
+  { 
+    ht = h.type
+    if (ht == readLocked) 
+    {
+//       print "UH OH - readLocked - why?\n"
+      continue
+    }
+    if (h.date < baddate)
+    {
+//       print "UH OH - baddate - why?\n" 
+      continue
+    }
+
+
+    if (ht == createObject) objcreatedate = h.date
+    if (ht == modifyObject && // -
+          h.attrName == "Object Text") objtextmoddate = h.date
+
+  }
+
+  if (objtextmoddate == null) return objcreatedate
+  return objtextmoddate
+}
+
+Date getobjectmoddate (Object obj)
+{
+  if (null obj) return null
+
+  Date lastModOnVal = obj."Last Modified On"  // any null problems here?
+  Date latestdate = null
+  History h
+  HistoryType ht
+  int absno = obj."Absolute Number"
+
+  // Unfortunately we have to go through objects's entire history
+  for h in obj do 
+  { 
+    ht = h.type
+    if (ht == readLocked) 
+    {
+//       print "UH OH - readLocked - why?\n"
+      continue
+    }
+    if (h.date < baddate)
+    {
+//       print "UH OH - baddate - why?\n" 
+      continue
+    }
+
+    if (ht==createObject)
+    {
+      latestdate = h.date
+    }
+    else if (ht==modifyObject ||
+             ht == createAttr ||
+             ht == modifyAttr ||
+             ht == deleteAttr)  // tried to add || createAttr (e.g.) but that makes out-of-date - why?
+    {
+      // FOLLOWING 2 lines assigning oldV and newV are causing problems, 
+      // and oldV and newV aren't used at this point anyway.  Means getting all the values,
+      // and running out of memory.
+
+      // string oldV = h.oldValue
+      // string newV = h.newValue
+      if (latestdate > h.date) 
+      {
+	pwlogdate ("Object " absno " dates out of order, prev latest= " latestdate " current= " h.date "" ) ;
+      }
+      else
+      {
+        latestdate = h.date
+      }
+    }
+  }
+ 
+  if (lastModOnVal < latestdate)
+  {
+    pwlogdate ("Object " absno " Found lastModOnVal " lastModOnVal " but latestdate " latestdate "\n" )   // could happen if attr not mods date. 
+  }
+  else
+  {
+    latestdate = lastModOnVal
+  }
+  return latestdate
+}
+
+Regexp txtxmlattrRE = regexp "\\.(txt|xml|attr)$"
+bool isfiletodelete (string filename)
+{
+  if (txtxmlattrRE filename) return true
+  return false 
+}
+
+bool fileexists (string filename)
+{
+  Stat fs = create filename
+  if (null fs) return false
+  delete fs
+  return true
+}
+
+bool isdir (string filename)
+{
+  Stat fs = create filename
+  if (null fs) return false
+  bool b = directory (fs)
+  delete fs
+  return b
+}
+
+bool isSimpleFile(string filename)
+{
+  Stat fs = create filename
+  if (null fs) return false
+  bool b = regular (fs)
+  delete fs
+  return b
+}
+
+////////////////////////////////////////////////////////////////////////
+// This used to require doing a fileexists call first, to avoid an    //
+// error message.  But fileexists requires creating a file to see if  //
+// it exists, and that's pretty bogus, mostly because in parallels,   //
+// that can take several seconds. And now it appears that deleteFile  //
+// will return an empty string whether or not the file exists.        //
+////////////////////////////////////////////////////////////////////////
+void deleteorhalt (string filename)
+{
+  // if (fileexists(filename))
+  // {
+  string errmess = deleteFile (filename)
+  if (! null errmess)
+  {
+    ack "error from deleteFile of " filename ":\n" errmess
+    halt
+  }
+  // }
+  
+} 
+
+void makedirifneededorhalt (string dirname)
+{
+  if (isSimpleFile (dirname))
+  {
+    ack "Trying to create dir " dirname ", found simple file - bye!"
+    halt
+  }
+   // it's not a simple file already there, so if it doesn't exist, create it
+  if (!isdir (dirname)) 
+  {
+    pwlogdate ("Making directory " dirname "\n") 
+    mkdir (dirname)
+  }
+  if (!isdir (dirname)) 
+  {
+    ack "Couldn't make directory " dirname ", - bye!"
+    halt
+  }
+}
+
+// Don't know how to DELETE A DIRECTORY EVEN IF EMPTY  SHit.
+bool deleteContents (string dirname)
+{
+  if (!fileexists(dirname)) return false   // error
+  if (!isdir(dirname)) return false  // error
+  string filename
+  for filename in directory dirname do
+  {
+    // because of MacOSX/Unix:
+    if (filename == "." or filename == "..") continue
+    string pathname = dirname "\\" filename
+    if (isdir (pathname)) 
+    {
+      bool isOK = deleteContents (pathname)
+      if (!isOK) "Couldn't deleteContents of " pathname "\n"
+      if (!isOK) return false
+    }
+    else
+    {
+      if (isfiletodelete(pathname))
+      {
+        string errmess = deleteFile (pathname)
+        if (! null errmess) 
+        {
+          print "errmess is for deleteFile of " pathname " is " errmess "\n"
+          return false
+        }
+      }
+    }
+  }
+  return true
+}
+
+// Following process status functions coordinate the interaction of
+// the DXL and linux WebGeneration.  The only process status that is OK
+// to start the DXL is IDLE.  While dumpprojects is running the process
+// status must be set to DXL_BUSY.  When that's finished, we set the 
+// process status to DXL_DONE.  This is somewhat redundant with the progress
+// file, but that's used differently.
+bool isOKProcessStatus()
+{
+    bool isOK = false
+    if (fileexists (statusfilepath))
+    {
+        Stream statusinput = read statusfilepath
+        string statusline
+        statusinput >> statusline
+        if (statusline[0:3] == "IDLE")
+        {
+          isOK = true
+        } 
+        close statusinput
+    }
+    else
+    {
+        // if file doesn't exist, assume idle
+        isOK = true 
+    }
+    return isOK
+}
+// these two don't check, just write
+// Ought to put some error code in here...
+void setProcessStatusBusy()
+{
+    bool isOK = false
+    Stream statusoutput = write statusfilepath
+    statusoutput << "DXL_BUSY" << "\n"
+    close statusoutput
+}
+void setProcessStatusDone()
+{
+    bool isOK = false
+    Stream statusoutput = write statusfilepath
+    statusoutput << "DXL_DONE" << "\n"
+    close statusoutput
+}
+
+bool isGoodModule(string smname)
+{
+  if (ignoremoduleRE smname) return false 
+  ModName_ modname = module (smname)
+  if (type (modname) != "Formal") return false
+  return true ;
+  // might want to add stuff like - is it readable? is it deleted?
+}
+
+
+// does this object have any links?
+bool hasLinks (Object obj)
+{
+  Link l
+  bool has = false
+  for l in obj->"*" do
+  {
+    has = true 
+    break
+  }
+  if (has) return true
+  // we use ModName_, instead of Link, since that works whether
+  // or not the source module's open
+  ModName_ lmod
+  for lmod in obj<-"*" do
+  {
+    has = true
+    break
+  }
+  return has
+}
+
+// returns true if object (see code for and/or relationships) 
+//  - IS NOT deleted
+//  NOPE NOW WE'RE INCLUDING THESE - IS NOT a table header object
+//  - IS NOT a table cell
+// we used to check for a shall or for links - now we just do it
+
+bool isGoodRequirement (Object obj)
+{
+  if (isDeleted (obj)) return false
+  // if (table(obj)) return false
+  // if (row(obj)) return false
+  // if (cell(obj)) return false       // no matter what the contents
+                                   // of a table cell - may want to
+                                   // change this
+  return true
+}
+
+////////////////////////////////////////////////////////////////////////
+// Make a full path name for use in naming a file from Windows. For   //
+// example, from smname = "3 ISRD" we would get                       //
+// "Z:\ttr\SIM\3_ISRD"                                      //
+////////////////////////////////////////////////////////////////////////
+string makeupdatedirname (string smname)
+{
+  return updaterootdirname gooddosname (smname) // was goodFileName
+}
+
+string makedbdirname (string smname)
+{
+  return dbrootdirname gooddosname (smname) // was goodFileName
+}
+
+////////////////////////////////////////////////////////////////////////
+// make a relative path name assuming we're currently in a            //
+// subdirectory of prootdirname.  So for example, instead of          //
+// makedirname's result of "Z:\tracetreeroot\SIM\3_ISRD" we would get //
+// "..\3_ISRD" .  Continue to use backslash; let Perl take care of    //
+// that later.                                                        //
+////////////////////////////////////////////////////////////////////////
+string makereldirname (string smname)
+{
+  return "..\\" goodname (smname)
+}
+
+Regexp dash = regexp "-"
+string replacedash (string str)
+{
+  string s = str ""    // make sure you're not touching original
+  while (dash s)
+  {
+    s = s[0:start 0 - 1] "_" s [end 0 + 1:]
+  }
+  return s
+}
+
+string makenodename (Object obj)
+{
+  Module mod = module (obj)
+  string smname = mod."Name"
+  string fakefilename = goodname (smname)
+  fakefilename = replacedash (fakefilename)
+  int absno = obj."Absolute Number"
+  return "L" fakefilename "_" absno ""
+}
+
+string makenodelabel (Object obj)
+{
+  Module mod = module (obj)
+  string smname = mod."Name"
+  string fakefilename = goodname (smname)
+  int absno = obj."Absolute Number"
+  return fakefilename "-" absno ""
+}
+
+void xmlRTChunk(Stream xmloutput, RichText rt, int chunknum, // -
+                   int absno, string filenamebase)
+{
+  //////////////////////////////////////////////////////////////////////
+  // An empirical finding, which depends on subsequent processing:    //
+  // Given that this stuff goes through an xml parser, the ampersand  //
+  // character must be represented as "&amp;".  (There must be some   //
+  // better way to do this - make the XML parser recognize &anything; //
+  // , but then it needs to be passed verbatim on to the html code.   //
+  // Tricky, until you know the trick.  I don't.) The result is that, //
+  // for example, a right single quote becomes &amp;rsquo; .  The     //
+  // first &amp; gets converted by the xml parser into &, which       //
+  // result in the string &rsquo; , which the html parser is happy to //
+  // deal with.                                                       //
+  //////////////////////////////////////////////////////////////////////
+  xmloutput << "    <Chunk>\n"
+  string chunktype 
+  if (rt.isOle) chunktype = "OLE"
+  else if (rt.isUrl) chunktype = "URL"
+  else chunktype = "text"
+  xmloutput << "      <Number>" chunknum "</Number>\n" // elim later
+  xmloutput << "      <Type>" chunktype "</Type>\n"
+  if (rt.bold)        xmloutput << "      <bold>true</bold>\n"
+  if (rt.italic)      xmloutput << "      <italic>true</italic>\n"
+  if (rt.underline)   xmloutput << "      <underline>true</underline>\n"
+  if (rt.strikethru)  xmloutput << "      <strikethru>true</strikethru>\n"
+  if (rt.superscript) xmloutput << "      <superscript>true</superscript>\n"
+  if (rt.subscript)   xmloutput << "      <subscript>true</subscript>\n"
+  if (rt.newline)     xmloutput << "      <newline>true</newline>\n"
+  if (rt.last)        xmloutput << "      <last>true</last>\n"
+  if (rt.charset != 0) xmloutput << "<charset>" rt.charset "</charset>\n"
+
+  // Now we use a buffer to - possibly - substitute &xxxx; for 
+  // non-ascii non-standard stuff.  Do it brute force, one character 
+  // at a time.  And it's empirical, until we figure out how DOORS
+  // encodes things.  Cuz it doesn't make sense so far.
+  Buffer b = create
+  string t = rt.text
+  bool isrt = isRichText (t)
+ 
+  int len = length (t)
+  int it 
+
+  for (it = 0 ; it < len ; it++)
+  {
+    char c = t[it]
+    int ic = intOf(c)
+    // A problem here is that ic may not be the whole of the symbol,
+    // which might be 2bytes.  E.g, 8730 is a square root, but ic 
+    // comes out as 63.  8729 is a bullet, but ic is still 63
+    int charset = rt.charset
+    bool isass = isascii (c)
+    // Test whether the cast to integer really worked.  Then what?
+    bool is16 = false
+    char testc = charOf(ic)
+    if (c != testc)
+    {
+      pwlogdate ("mod " pname "absno=" absno " it=" it "   charset=" charset " c='" c "' ic=" ic " testc='" testc "'\n" )
+    }
+// print  "absno = " absno " charset = " charset " it = " it " c = " c " ic = " ic "\n"
+    if (charset != 0 || ! isascii (c) ) 
+    {
+//     absno == 1016 || // -
+//     absno == 1187 || // -
+//     absno == 1987 || // -
+//     absno == 958  || // -
+//     absno == 1265 || // -
+//     absno == 234 ) // -
+
+      string result
+// BOZO WE NEED TO TEST AGAINST THE CHARACTERS THEMSELVES AS IN THE GREEK SECTION BELOW.  
+// Makes it hard to know what to do - how do we know something's 16 bit?
+      if (charset == charsetAnsi)
+      {
+        // for future, see 
+   // http://www.htmlhelp.com/reference/html40/entities/latin1.html
+        // a bit of an experiment: if it's a 16bit code, as discovered above by comparing 
+        // c with testc = charOf(intOf(c)), we look for actual characters, then skip
+        // the tests of ic
+        if (c == '→')      result = "&amp;rarr;"
+        else if (c == '≤') result = "&amp;le;"
+        else if (c == '≥') result = "&amp;ge;"
+        else if (c == 'π') result = "&amp;pi;"
+        else if (c == 'μ') result = "&amp;micro;"
+        else if (c == '‑')   result = "&amp;ndash;"
+        else if (ic == 147) result = "&amp;ldquo;"
+        // above (c==...) else if (ic == 63) result = "&amp;ge;" // the weird one - was le; yikes
+        else if (ic == 133) result = "&amp;hellip;"
+        else if (ic == 145) result = "&amp;lsquo;"
+        else if (ic == 146) result = "&amp;rsquo;"
+        else if (ic == 148) result = "&amp;rdquo;"
+        else if (ic == 149) result = "&amp;bull;"
+        else if (ic == 150) result = "&amp;ndash;"
+        else if (ic == 160) result = "&amp;nbsp;"
+        else if (ic == 168) result = "&amp;uml;"
+        else if (ic == 171) result = "&amp;laquo;"
+        else if (ic == 173) result = "&amp;shy;"
+        else if (ic == 177) result = "&amp;plusmn;"
+        else if (ic == 181) result = "&amp;micro;"   // same as Symbol109?
+        else if (ic == 183) result = "&amp;middot;"
+        else if (ic == 185) result = "&amp;sup1;"
+        else if (ic == 187) result = "&amp;raquo;"
+        else if (ic == 189) result = "&amp;frac12;"  // one-half
+        else if (ic == 197) result = "&amp;Aring;"
+        else if (ic == 224) result = "&amp;agrave;"
+        else if (ic == 231) result = "&amp;ccedil;"
+        else if (ic == 246) result = "&amp;ouml;"
+        else if (ic == 247) result = "&amp;divide;"
+        else if (ic == 252) result = "&amp;uuml;"
+        else if (ic == 216 || ic == 233 || ic == 202 || // -
+                 ic == 142 || ic == 178 || ic == 167 || // -
+                 ic == 176 || ic == 186 || ic == 248 || // -
+                 ic == 172 || ic == 173 || ic == 188 || // -
+                 ic == 194 || ic == 166 || ic == 215 ) // -
+            result = "&amp;#" ic ";"  // just put code in
+        else result = "<UnknownChar>Ansi" ic "</UnknownChar>"
+      }
+      else if (charset == charsetSymbol)
+      {
+        if (ic == 109) result = "&amp;mu;"
+        else if (ic == 9) result = "&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;"  // terrible - shouldn't work in html
+        else if (ic == 162) result = "&amp;prime;"   // minute
+        else if (ic == 163) result = "&amp;le;"
+        else if (ic == 32) result = " "
+        else if (ic == 40) result = "(" 
+        else if (ic == 42) result = "&amp;#" ic ";"
+        else if (ic == 58) result = "&amp;#" ic ";"
+        else if (ic == 60) result = "&amp;lt;"
+        else if (ic == 61) result = charOf(ic) ""
+        else if (ic == 62) result = "&amp;tilde;"
+        else if (ic == 126) result = "&amp;plusmn;"  // same as ansi
+        else if (ic == 166) result = "&amp;fnof;"
+        else if (ic == 167) result = "&amp;#9632;"   // empirical square bullet
+        else if (ic == 177) result = "&amp;plusmn;"  // same as ansi
+        else if (ic == 181) result = "&amp;micro;"   // same result as 109?
+        else if (ic == 112) result = "&amp;pi;"
+        else if (ic == 113) result = "&amp;theta;"
+        else if (ic == 122) result = "&amp;zeta;"
+        else if (ic == 119) result = "&amp;omega;"
+        else if (ic == 68) result = "&amp;Delta;"
+        else if (ic == 70) result = "&amp;Phi;"
+        else if (ic == 87) result = "&amp;Omega;"
+        else if (ic == 84) result = "&amp;Tau;"
+        else if (ic == 102) result = "&amp;phi;"
+        else if (ic == 108) result = "&amp;lambda;"
+        else if (ic == 115) result = "&amp;sigma;"
+        else if (ic == 179) result = "&amp;ge;"
+        else if (ic == 37) result = charOf(ic) ""
+        else if (ic >= 43 && ic <= 57) result = charOf(ic) ""
+        else if (ic == 179) result = "&amp;ge;"
+        else if (ic == 176) result = "&amp;#" ic ";" 
+        else if (ic == 180) result = "&amp;times;"
+        else if (ic == 183) result = "&amp;middot;"
+        else result = "<UnknownChar>Symbol" ic "</UnknownChar>"
+      }
+      else if (charset == charsetGreek)
+      {
+        if (c == 'μ') result = "&amp;micro;"
+        else if (c == 'Δ') result = "&amp;Delta;"
+        else if (c ==  'Ω') result = "&amp;Omega;" 
+        else if (c == 'σ') result = "&amp;sigma;"
+        else if (c == '≤') result = "&amp;le;"
+        else if (c == 'λ') result = "&amp;lambda;"
+        else if (c == 'γ') result = "&amp;gamma;"
+        else if (c == 'δ') result = "&amp;delta;"
+        else if (c == 'θ') result = "&amp;theta;"
+        else if (c == '∙') result = "&amp;#8729;"     // should be able to do this directly: 8729 is in the rtf
+        else if (c == '√') result = "&amp;radic;"
+        else if (c == 'π') result = "&amp;pi;"
+        else if (ic == 38) result = "&amp;amp;"
+        else if (ic == 177) result = "&amp;plusmn;"
+        else if ( ic == 32 ||  ic == 37 || ic == 38 || (ic >= 40 && ic <= 47) ||  ic == 61 || // -
+                 (ic>=48 && ic<=58) || // -
+                 (ic>=65 && ic<=90) || // -
+                 (ic>=97 && ic<=122) ) result = charOf(ic) ""
+        else if (ic == 60) result = "&amp;lt;"
+        else if (ic == 61) result = charOf(ic) ""
+        else if (ic == 62) result = "&amp;gt;"
+        else result = "<UnknownChar>Greek" ic "</UnknownChar>"
+      }
+// also have situation of charset 1, whatever that is, resulting in latin characters,
+// similar to above for greek.
+     else if (charset == 186)
+     {
+// print "absno=" absno " charset=" charset " ic = " ic "\n"
+        if (ic == 9) result = "&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;"  // terrible - shouldn't work in html
+        else if ((ic >= 46 && ic <= 62) || // -
+            (ic >= 65 && ic <= 90) || // -
+            (ic >= 97 && ic <= 122) ) result = charOf(ic) ""
+        else result = "<UnknownChar>charset" charset " " ic "</UnknownChar>"
+  }
+     else if (charset == 1 || charset == 77 || charset == 128 || charset == 134  || charset == 162 || // -
+                  charset ==204 || charset == 238)  // yuck
+    {
+      if ( ic == 32 ||  ic == 39 || ic == 40 || ic == 41 || ic == 42 || ic ==44 || ic == 45 || ic == 46 || // -
+           ic == 61 || ic == 95 || // -
+                 (ic>=48 && ic<=59) || // -
+                 (ic>=65 && ic<=90) || // -
+                 (ic>=97 && ic<=122) ) result = charOf(ic) ""
+        else if (ic == 9) result = "&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;"  // terrible - shouldn't work in html
+     else if (ic == 34) result = "&amp;quot;"
+     else if (ic == 38) result = "&amp;#38;"
+     else if (ic == 60) result = "&amp;lt;"
+     else if (ic == 61) result = charOf(ic) ""
+     else if (ic == 62) result = "&amp;gt;"
+     else if (ic == 91 || ic == 93) result = charOf(ic) ""     // square brackets
+     else if (ic == 47 || ic == 94) result = "&amp;#" ic ";"
+        else if (c == '√') result = "&amp;radic;"
+     else result = "<UnknownChar>charset" charset " " ic "</UnknownChar>"
+    }
+      else result = "<UnknownChar>charset" charset " " ic "</UnknownChar>"
+      // if (result[0:12] == "<UnknownChar>") // -
+          // print "absno=" absno " it=" it " charset=" charset // -
+          // " c=" c " ic=" ic " t=" t "\n"
+      b += result
+    }
+    else 
+    {
+     if      (c == '&')  b += "&amp;amp;" 
+      else if (c == '"') b += "&amp;quot;" 
+      else if (c == '<')  b += "&amp;lt;" 
+      else if (c == '>')  b += "&amp;gt;"
+      else                b += c
+    }
+  }
+  xmloutput << "      <Text>" b "</Text>\n"
+  delete b
+  if (rt.isOle)
+  {
+    EmbeddedOleObject ole = rt.getEmbeddedOle
+    // ought to make this more modular - we're making an assumption here about code elsewhere BOZO
+    string filename = filenamebase "-" chunknum ".png"
+    string relfilename = absno "-" chunknum ".png"   // for reference within eventual html
+    xmloutput << "        <Filename>" relfilename "</Filename>\n"
+    errmess = exportPicture (ole, filename, formatPNG)
+    if (!null errmess)
+    {
+      xmloutput << "<ERROR>" errmess "</ERROR>\n"
+    }
+  }
+  xmloutput << "    </Chunk>\n"
+}
+
+void xmlRTString(Stream xmloutput, string s, int absno, // -
+                 string filenamebase)
+{
+  RichTextParagraph rp
+  RichText rt
+  int chunknum = 0
+  for rp in s do {
+    xmloutput << "  <Paragraph>\n"
+    // print "indent:" rp.indentLevel ": "
+    // print "bullet:" rp.isBullet ":\n"
+    // print "bulletStyle:" rp.bulletStyle ":\n"
+    for rt in rp do
+    {
+      xmlRTChunk (xmloutput, rt, chunknum, absno, filenamebase)
+      chunknum++
+    }
+    xmloutput << "  </Paragraph>\n"
+  }
+}
+
+string objurlAmpToXML(string objurl)
+{
+  Buffer b = create
+  int len = length (objurl)
+  int i
+
+  for (i = 0 ; i < len ; i++)
+  {
+    char c = objurl[i]
+    // only good are alphanumeric, underscore, and dash
+    if (c == '&')
+    {
+      b += "&amp;" ;
+    }
+    else
+    {
+      b += c ;
+    }
+  }
+  string sb = stringOf(b)
+  delete b
+  return sb
+}
+
+
+////////////////////////////////////////////////////////////////////////
+// routine doModule - gather together common actions on each module.  //
+////////////////////////////////////////////////////////////////////////
+void doModule (Item itemref, string updatemodfullname)                                                                                                                                                 
+{
+  string fullname = fullName(itemref)
+  string sfullname = modFullName(fullName(itemref))
+pwlogdate ("in doModule, pname = '" pname "' fullname = '" fullname "' sfullname = '" sfullname "'\n")
+
+  ModName_ modname = module (fullname)
+// a way to skip all but one, for debug purpose:
+// if (fullname != "/SIM/L5 ABC AM") return
+  // for DOORS 9.3, we add the parameter 'true' to the read call 
+  // to force use of the standard view, which eliminates dxl attributes
+  Module mod = read (sfullname, false, true)
+  if (null mod) pwlogdate ("Uh oh couldn't open " fullname "\n")
+
+  string smname = mod.("Name")
+
+  // we do this in here because we need mod description before deciding to proceed
+  string modDescription = mod.("Description")
+  string modPrefix      = mod.("Prefix")
+// print "About to check module " sfullname " with description " modDescription "\n"
+  // skip this module if it's a DSN witha  description not starting with 8nn
+  if (!checkDSNdescription (sfullname, modDescription)) return
+
+  progressoutput << "Starting module " sfullname "\n"
+  flush (progressoutput)
+
+  // find attributes to include
+  AttrDef ad
+  int attrcount = 0
+  for ad in mod do 
+  {
+    if (!ad.object) continue
+    if (ad.dxl) continue
+    if ((ad.system && isMemberOf (ad.name, sysattrincludelist)) // -
+     || (!ad.system && !isMemberOf (ad.name, userattrexcludelist))) // -
+       attrcount++
+  }
+  string attrlist[attrcount] ;
+  attrcount = 0
+  for ad in mod do 
+  {
+    if (!ad.object) continue
+    if (ad.dxl) continue
+    if ((ad.system && isMemberOf (ad.name, sysattrincludelist)) // -
+     || (!ad.system && !isMemberOf (ad.name, userattrexcludelist))) // -
+    {
+      attrlist[attrcount] = ad.name
+      attrcount++
+    }
+  }
+  string updatedirname = makeupdatedirname (sfullname)
+  string dbdirname = makedbdirname (sfullname)
+pwlogdate ("writing the files...\n" )
+  string descfilename = updatedirname "\\" "moduleDescription.txt"
+  deleteorhalt (descfilename)
+  Stream descoutput = write descfilename
+  descoutput << modDescription << "\n"
+  close (descoutput)
+
+  string prefixfilename = updatedirname "\\" "modulePrefix.txt"
+  deleteorhalt (prefixfilename)
+  Stream prefixoutput = write prefixfilename
+  prefixoutput << modPrefix << "\n"
+  close (prefixoutput)
+
+  string seqfilename = updatedirname "\\" "sequence.txt"
+  deleteorhalt (seqfilename)
+  Stream seqoutput  = write seqfilename
+
+  // we look for date file in db directory.  
+  string datefilename = dbdirname "\\" "dates.txt"
+  Stream dateinput
+  bool havedates = false
+  string dateline
+  Skip xmldatelist = createString
+  Regexp datere = regexp "^([0-9]+)	([0-9][0-9]/[0-9][0-9]/20[0-9][0-9])" ;
+
+// pwlogdate ("checing and reading " datefilename "\n")
+  if (fileexists (datefilename))
+  {
+    dateinput = read datefilename
+    while (true)
+    {
+      dateinput >> dateline ;
+      if (end dateinput) break ;
+      // now parse dateline 
+      if (datere dateline)
+      {
+        // int objnum = (int )(dateline[match 1])
+        string objnums = dateline[match 1]
+        Date xmlobjdate = dateline[match 2]
+        put (xmldatelist, objnums, xmlobjdate)
+      }
+      havedates = true
+    }
+    close (dateinput)
+  }
+  History hrmodule
+  Date moduledate
+  for hrmodule in mod do 
+  {
+    // make assumption that create is listed before baseline,
+    // thus baseline correctly overwrites create
+    // We'll add in "acceptModule" - not knowing what it is ...
+    if (hrmodule.type == baselineModule  //-
+        || hrmodule.type == createModule //-
+        || hrmodule.type == acceptModule) //-
+            moduledate = hrmodule.date
+  }
+// WHERE DOES moduledate get recorded on per-module basis?
+
+  Object obj
+  Object otherObj
+  Module otherMod
+
+  //////////////////////////////////////////////////////////////////////
+  // Main object loop                                                 //
+  //////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////
+  // use entire mod because it includes all objects, including        //
+  // current not displayed.  Unfortunately it also includes deleted.  //
+  // Oh well, NBD.                                                    //
+  //////////////////////////////////////////////////////////////////////
+  int objcount = 0
+  for obj in entire mod do
+  {
+    int absno = obj."Absolute Number"
+// pwlogdate ( "Got absno = " absno "\n")
+    if (!isGoodRequirement (obj)) continue
+    objcount++
+// if (objcount > 40) break    // make this quick
+
+    seqoutput << absno "\n" 
+
+    string filenamebase = updatedirname "\\" absno ""
+    string htmlfilename = filenamebase ".html"
+    string txtfilename = filenamebase ".txt"
+    string attrfilename = filenamebase ".attr"
+    string xmlfilename = filenamebase ".xml"
+    // string lnkfilename = filenamebase ".lnks"
+
+   // used at all? apparently not bool xmlexists = fileexists (xmlfilename)
+    bool isuptodate = false    // assume it's out of date unless proven otherwise
+    if (havedates)
+    {
+      string thisobjnums = absno ""
+      Date objdateentry
+      if (find (xmldatelist, thisobjnums, objdateentry))
+      {
+        // used to look only at object mod date
+	// Date objdate = obj."Last Modified On" 
+	// now look at entire object history.  Might be slow
+	Date objdate = getobjectmoddate (obj)
+        if (objdate < objdateentry) isuptodate = true
+      }
+    }
+    progressoutput << "  id: " absno " count " objcount " will update: " (!isuptodate) "\n" 
+    flush (progressoutput)
+
+   // Still have to do object date stuff independent of whether we do xml and attr
+   // because lnks file depends on it.  Rats.
+   string sfmt = "yyyy-MM-dd"    // choose directly sortable format
+   Date dt = dateAndTime(today())
+   string reportdatetime = stringOf (dt, sfmt)
+   comparedate = getobjtxtmoddate (obj)
+   bool comparedateisbaseline = false
+   if (null comparedate) 
+   {
+     comparedate = moduledate
+     find(moduledates, smname, comparedate)
+     comparedateisbaseline = true
+   }
+    string smdt = "CreateModDate"
+    if (comparedateisbaseline) smdt = "ModuleBaseline"
+
+    ////////////////////////////////////////////////////////////////////
+    // we no longer consider looking at existence of xml file.  Use   //
+    // only date file.                                                //
+    ////////////////////////////////////////////////////////////////////
+    if (!isuptodate)
+    {
+
+      bool hasOLEObject = oleIsObject (obj)
+      string txt 
+      // don't think we use this any more
+      // if (isOutline(obj)) 
+      // {
+      //   string snumber = number(obj)
+      //   string hdr = obj."Object Heading"
+      //   txt = snumber "\t" hdr
+      // }
+      // else                txt = obj."Object Text"
+
+      string snumber = number(obj)
+
+      deleteorhalt (xmlfilename)
+      Stream xmloutput = write xmlfilename
+
+      xmloutput << "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n"
+      xmloutput << "<Object>\n"
+      xmloutput << "  <ObjectID>" absno "</ObjectID>\n"
+      xmloutput << "  <ObjectNumber>" snumber "</ObjectNumber>\n"
+      xmloutput << "  <ProjectName>" pname "</ProjectName>\n"
+      xmloutput << "  <ModuleName>" smname "</ModuleName>\n"
+      xmloutput <<"   <ReportDate>" reportdatetime "</ReportDate>\n"
+      xmloutput << "  <ModDateType>" smdt "</ModDateType>\n"
+      xmloutput << "  <ModDate>" stringOf (comparedate, sfmt) "</ModDate>\n"
+      string objurl = getURL(obj)
+      objurl = objurlAmpToXML(objurl)
+      xmloutput << "  <ObjectURL>" objurl "</ObjectURL>\n"
+
+      if (table(obj))
+      {
+        xmloutput << "  <isTableHeader>true</isTableHeader>\n"
+      }
+      if (row(obj))
+      {
+        xmloutput << "  <isTableRow>true</isTableRow>\n"
+      }
+      if (cell(obj))
+      {
+        xmloutput << "  <isTableCell>true</isTableCell>\n"
+      }
+      
+      if (isOutline(obj))
+      {
+        xmloutput << "  <isOutline>true</isOutline>\n"
+        // used to be here, only for outline xmloutput << "  <ObjectNumber>" snumber "</ObjectNumber>\n"
+        xmloutput << "  <ObjectHeading>"
+        txt  = richTextWithOle (obj."Object Heading")
+        xmlRTString (xmloutput, txt, absno, filenamebase)
+        xmloutput << "  </ObjectHeading>\n" ;
+      }
+
+      txt = richTextWithOle (obj."Object Text")
+      if (! null txt)
+      {
+        xmloutput << "  <ObjectText>\n"
+        xmlRTString (xmloutput, txt, absno, filenamebase)
+        xmloutput << "  </ObjectText>\n"
+      }
+
+      txt = richTextWithOle (obj."Object Short Text")
+      if (! null txt)
+      {
+        xmloutput << "  <ObjectShortText>\n"
+        xmlRTString (xmloutput, txt, absno, filenamebase)
+        xmloutput << "  </ObjectShortText>\n"
+      }
+
+      xmloutput << "</Object>\n"
+      close xmloutput
+
+      // no, we're not ... if (isOutline(obj)) continue    // we're done if header
+      // NOW the attributes
+      deleteorhalt (attrfilename)
+      Stream attroutput = write attrfilename
+
+      int iattr
+      string attrname
+      attroutput << "<?xml version=\"1.0\"?>\n"
+      attroutput << "<attributes>\n"
+      for (iattr = 0 ; iattr < sizeof attrlist ; iattr++)
+      { 
+        attrname = attrlist[iattr]
+        attroutput << "<attr>\n  <attrname>" attrname "</attrname>\n" 
+        string sattr = obj.attrname
+        attroutput << "  <attrvalue>" sattr "</attrvalue>\n</attr>\n"
+      }
+      attroutput << "</attributes>\n"
+      close (attroutput)
+    }
+
+    // do the links here
+    // Always do the links, because DOORS doesn't always set the Last Modified On attribute
+    // when modifying links
+    // deleteorhalt (lnkfilename)
+    // Stream lnkoutput = write lnkfilename
+    // for efficiency in subsequent processing, put in this object's date stuff
+    // lnkoutput << smdt "\t" stringOf (comparedate, sfmt) "\n"
+    string unixname = goodunixname (sfullname)
+    alllinkoutput << unixname "\t" absno "\t" smdt "\t" stringOf (comparedate, sfmt) "\n"
+
+    Link l
+    for l in obj->"*" do
+    {
+      ModName_ tmodname = target l
+      string tsfullname = modFullName(fullName(tmodname))
+      string tunixname = goodunixname (tsfullname)
+      int tabsno = targetAbsNo l
+      // lnkoutput << "t\t" tunixname "\t" tabsno "\n"
+
+      alllinkoutput << unixname "\t" absno "\t" "t\t" tunixname "\t" tabsno "\n"
+    }
+// Turns out that the following loop doesn't detect sources in modules which are not loaded.
+// Since the idea of dumpemall was to avoid loading all modules, we'll have to catch it later,
+// in post-processing.  Sucks.
+//    for l in obj<-"*" do
+//    {
+//      ModName_ smodname = source l
+//      string ssfullname = fullName(smodname)
+//      string sunixname = goodunixname (ssfullname)
+//      int sabsno = sourceAbsNo l
+//      lnkoutput <<  "s\t" sunixname "\t" sabsno "\n"
+//    }
+    // close lnkoutput
+  }
+  delete (xmldatelist)
+  close (seqoutput)
+  
+
+// print "closing " sfullname "\n"
+  if (! (close (mod, true))) pwlogdate ("couldn't close " sfullname " - why?\n")
+  // Here we're going to try closing all the modules.  This should NOT 
+  // be necessary, but somehow the above statement doesn't close 
+  // everything. 
+  Project cp = current Project
+  Module cmod
+  closecount = 0
+  for cmod in cp do
+  {
+    closecount++
+  }
+
+  if (closecount > 0)
+  {
+    pwlogdate ("Having to close all modules for some reason, closecount = " closecount "\n")
+    closecount = 0
+    // this form of the for module in project - with a "module"
+    // for an argument - iterates through only open modules
+    for cmod in cp do
+    {
+      string cfullname = modFullName(fullName(cmod))
+      pwlogdate ("Closing " cfullname "\n")
+      if (close (cmod, true)) closecount++
+      else  ack "Couldn't close module " cfullname
+    }
+    pwlogdate ("Closed " closecount " modules")
+  }
+
+
+}
+
+////////////////////////////////////////////////////////////////////////
+// MAIN PROGRAM                                                       //
+////////////////////////////////////////////////////////////////////////
+
+// FIRST check process status.  We only start if state is IDLE.
+
+if (! isOKProcessStatus())
+{
+    // how do we report this?  For now, just halt
+    halt
+}
+setProcessStatusBusy()     // keeps other stuff from happening for now
+
+// start a new progress file
+deleteorhalt (progressfilepath)
+progressoutput = write progressfilepath
+logoutput = write logfilepath
+
+int iproj
+pwlogdate ("Starting\n")
+
+
+for (iproj = 0 ; iproj < sizeof projectlist ; iproj++) 
+{
+  string projname = projectlist[iproj]
+  pwlogdate ("About to set current to projname=" projname "\n")
+  current = project projname 
+  Project p = current Project
+  if (null p)
+  {
+    ack "No project is open"
+    halt
+  }
+  pname = name p
+  // print "Project (pname) is: ''" pname "'\n"   // this seems redundant with projname.  legacy, good for checking
+
+  Module cmod
+  closecount = 0
+  for cmod in p do
+  {
+    closecount++
+  }
+
+  if (closecount > 0)
+  {
+    closecount = 0
+    // this form of the for module in project - with a "module"
+    // for an argument - iterates through only open modules
+    for cmod in p do
+    {
+      // string smname = mod.("Name")
+      string fullname = modFullName(fullName(cmod))
+      if (close (cmod, true)) closecount++
+      else  ack "Couldn't close module " fullname
+    }
+    // no interaction, please ... 
+    //ack "Closed " closecount " modules"
+  }
+
+  prootdirname = updaterootdirname "\\" goodname(pname)
+  pwlogdate ("project root directory name is " prootdirname "\n")
+  if (!fileexists(prootdirname))   // then create it
+  {
+    if (isSimpleFile (prootdirname))
+    {
+      ack "Trying to create dir " prootdirname", found simple file - bye!"
+      halt
+    }
+    // it's not a simple file already there, so if it doesn't exist, create it
+    if (!isdir (prootdirname)) mkdir (prootdirname)
+                                            
+  }
+
+  // Now for the all-link file
+  string alllinkfilename = prootdirname "\\" "alllinks.txt"
+  deleteorhalt (alllinkfilename)
+  alllinkoutput = write alllinkfilename
+
+
+
+  Module mod
+  ModName_ modname
+  string smname
+
+  int modcount = 0
+  Item itemref
+  for itemref in current Project do
+  {
+    if (isDeleted(itemref)) continue
+    string itemfullname = modFullName(fullName(itemref))
+pwlogdate ("Processing " itemfullname " (" type(itemref) ") ... \n")
+    if (type(itemref) == "Folder" || type(itemref) == "Project")
+    {
+      // used to be simpler:
+      //     if (! ignorefolderRE itemfullname)
+      //  Now we need to make an exception because of OLD - MSAP
+
+      if ((! ignorefolderRE itemfullname) || //-
+           pname == " OLD Configuration - MSAP before 4-26-07"   ) 
+      {
+pwlogdate ("DOING folder or project " itemfullname "\n")
+        string updatefolderfullname = updaterootdirname gooddosname (itemfullname)
+        makedirifneededorhalt (updatefolderfullname)
+      }
+      else
+      {
+pwlogdate ("IGNORING folder or project " itemfullname "\n")
+      }
+    }
+    else if (type(itemref) == "Formal") 
+    {
+      if ( ( (ignorefolderRE itemfullname) || (ignoremoduleRE itemfullname) ) && //-
+           pname != " OLD Configuration - MSAP before 4-26-07"    ) 
+      {
+pwlogdate ("IGNORING " itemfullname "\n")
+      }
+      else
+      {
+pwlogdate ("DOING  " itemfullname "\n")
+        modcount++
+        string updatemodfullname = updaterootdirname gooddosname (itemfullname)
+        makedirifneededorhalt (updatemodfullname)
+        doModule (itemref, updatemodfullname)                                                                                                                                                 
+      }
+    }
+
+    // KLUDGY CHECK FOR OPEN MODULES BOZO
+    // this might take too long and shouldn't be necessary...
+    Module mforcheck
+    for mforcheck in database do
+    {
+// try to make this simpler.  module should be open, but mforcheck."Name" doesn't 
+// always return the full name, somehow, so 'open module smforcheck' fails.
+       close mforcheck
+// so just try closing, oughta work.
+//       string smforcheck = mforcheck.("Name")
+//       print "smforcheck is " smforcheck "\n"
+//       if (null smforcheck) print "in mforcheck loop, smforcheck is null\n" 
+//       else
+//       {
+//         if (open module smforcheck) 
+//         {
+//           print "In mforcheck, module " smforcheck " is open, closing\n"
+//           close mforcheck
+//         }
+//       }
+    }
+  }
+  close alllinkoutput
+}
+
+progressoutput << "\nDONE\n"
+close progressoutput
+pwlogdate ("Closing log\n")
+close logoutput
+
+// Set done status so other things can proceed
+setProcessStatusDone()
+
+////////////////////////////////////////////////////////////////////////
+// FUNCTION BODIES at least some of them, for now                     //
+////////////////////////////////////////////////////////////////////////

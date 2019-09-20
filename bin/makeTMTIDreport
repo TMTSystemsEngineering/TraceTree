@@ -1,0 +1,125 @@
+#! /usr/bin/perl
+
+require "ttutils.pl" ;
+require "fileutils.pl" ;
+
+$rootdirname = "ttr" ;
+$projname = "TMT_Requirements" ;
+
+@attrfilelist = getfilelistrecursive ("$rootdirname/$projname", 'attr$') ;
+
+# Open a TSV file in LogsAndData to store ascii data.  Do HTML later.
+$tsvoutfilename = "LogsAndData/TMT_Requirements.TMTIDs.tsv" ;
+open T, "> $tsvoutfilename" 
+    or die "Couldn't open $tsvoutfilename for writing: $!\n" ;
+
+$reportpathname = "$rootdirname/$projname/TMTIDreport.html" ;
+open H, "> $reportpathname" 
+    or die "Couldn't open $reportpathname for writing: $!\n" ;
+$date = `date` ;
+print H htmlheader ("TMT ID Report") ;
+
+foreach $attrfilename (@attrfilelist) 
+{
+  %attrvalue = parseattributefile ($attrfilename) ;
+
+  ($modname = $attrfilename) =~ s/ttr\/TMT_Requirements\/// ;
+  $modname =~ s/\/\d+\.attr$// ;
+  $objcount{$modname}++ ;
+  if (defined $attrvalue{'TMT ID'} )
+  {
+    $moddefinesTMTID{$modname} = 1 ;
+    $val = $attrvalue{'TMT ID'} ;
+    next unless $val ;
+    $nObjsWithTMTIDValue{$modname}++ unless $val eq ' ' ;
+    ($obj = $attrfilename) =~ s/ttr\/TMT_Requirements\/// ;
+    # print "$attrfilename val = $attrvalue{'TMT ID'}\n" ;
+    if (defined $objOf{$val})
+    {
+      $hasmore{$val}++ ;
+      $objOf{$val} .= "\t$obj" ;
+    }
+    else { $objOf{$val} = $obj ; }
+  }
+}
+
+$date = `date` ;
+chomp $date ;
+print T "TMT ID Report for $date\n\n" ;
+print H "<h2>TMT ID Report for $date</h2>\n" ;
+print H "<p>Module conformance report follows Duplicates table</p>\n" ;
+
+print T "DUPLICATES (including a space character for a TMT ID)\n" ;
+print T "TMT ID value\tWhere Occurring\n" ;
+
+print H "<h3>DUPLICATES</h2>\n" ;
+print H "<p>Notes:<br>\n" ;
+print H "<ul>\n" ;
+print H "  <li>Includes badly-formed TMT IDs such as space characters, newlines, or partial IDs.</li>\n" ;
+print H "  <li>TMT IDs are printed inside single quotes in order to highlight spurious spaces and newlines.</li>\n" ;
+print H "  <li>Badly formed IDs are highlighted in red</li>\n" ;
+print H "  <li>Badly formed IDs that are not duplicates ARE NOT reported</li>\n" ;
+print H "</ul>\n" ;
+print H "</p>\n" ;
+print H "<table cellpadding=\"3\" cellspacing=\"3\" border=\"1\">\n" ;
+print H "  <tr><th>TMT ID value</th><th>Where Occurring (DOORS ID shown)</th></tr>\n" ;
+
+foreach $val (sort keys %hasmore)
+{
+  $objs = $objOf{$val} ;
+  $objs =~ s/\.attr//g ; 
+  @objs = split (/\t/, $objs) ;
+  $nobjs = scalar @objs ;
+
+  print T "'$val'\t" ;
+  print T "  " . join ("\n\t  ", @objs) . "\n" ;
+
+  $iswellformed = $val =~ /^REQ-\d-[A-Z]+-\d+$/ ;
+  $bgcolor = $iswellformed ? '#FFFFFF' : '#FFBBBBBB' ;
+  $hval = $val ;
+  $hval =~ s/\n/<br>/sg ;
+  print H "  <tr><td bgcolor=\"$bgcolor\">'$hval'</td>\n    <td>" ;
+  # will want to add links here.
+  print H join ("<br>", @objs) ;
+  print H "    </td>\n  </tr>\n" ;
+}
+print H "</table>\n" ;
+
+$nmodnames = scalar (keys %objcount) ;
+$nmodsdefiningTMTID = scalar (keys %moddefinesTMTID) ;
+print T "$nmodsdefiningTMTID modules define TMTID out of $nmodnames modules\n" ;
+print T "Modules that DO NOT define TMT ID as an attribute\n" ;
+print H "<h3>Module Conformance Report</h3>\n" ;
+print H "<p>Out of $nmodnames modules, $nmodsdefiningTMTID modules define the TMT ID attribute</p>\n" ;
+print H "<h4>Modules that DO NOT define TMT ID as an attribute:</h4>\n" ;
+print H "<UL>\n" ;
+foreach $modname (sort keys %objcount) 
+{
+  print T "$modname\n" unless $moddefinesTMTID{$modname} ;
+  print H "  <LI>$modname</LI>\n" unless $moddefinesTMTID{$modname} ;
+}
+print T "\n" ;
+print H "</UL>\n" ;
+
+print H "<h4>Stats for modules with TMT ID</h4>\n" ;
+print H "<p>Note: all objects, including headings and table cells, are represented in the figures here.</p>\n" ;
+print T "Module Name\tCount objects with TMT ID value\tCount total objects\tpercent with value\n" ;
+print H "<table cellpadding=\"3\" cellspacing=\"3\" border=\"1\">\n" ;
+print H "  <tr><th>Module Name</th><th>Count of objects with TMT ID value</th>\n" ;
+print H "  <th>Total number of objects</th><th>Percent with value</th></tr>\n" ;
+foreach $modname (sort keys %objcount) 
+{
+  next unless $moddefinesTMTID{$modname} ;
+  $nObjsWithTMTIDValue = $nObjsWithTMTIDValue{$modname} ;
+  $nObjs = $objcount{$modname} ;
+  $percent = int (100* $nObjsWithTMTIDValue/$nObjs) ;
+  print T "$modname\t$nObjsWithTMTIDValue\t$nObjs\t$percent%\n" ;
+  print H "  <tr><td>$modname</td><td>$nObjsWithTMTIDValue</td>" ;
+  print H " <td>$nObjs</td><td>$percent%</td></tr>\n" ;
+}
+print H "</table>\n" ;
+print H "</html>\n" ;
+close H ;
+close T ;
+system "ls -l $tsvoutfilename $reportpathname" ;
+print STDERR "\nDONE\n" ;

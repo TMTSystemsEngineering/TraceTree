@@ -1,0 +1,618 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+
+use XML::Simple;
+use DB_File ;
+
+require "fileutils.pl" ;
+require "miscutils.pl" ;
+require "ttutils.pl" ;
+require "xmlutils.pl" ;
+require "tt_projuniq.pl" ;
+
+@reportedattrs= (
+      'CR ID',
+      'CR State',
+      'CR Text',
+      'CR History',
+      'TMT ID',
+		) ;
+$tttdata="/data/doors-ttt/data/" ;
+# chdir $tttdata or die "Couldn't chdir to $tttdata\n" ;
+
+# Seems that $ENV{"PWD"} doesn't change after a chdir.  Is that 
+# the way its supposed to be?
+# die "Can't tell where I am - \$ENV{\"PWD\"} not defined\n" 
+#     if !defined $ENV{"PWD"} ;
+# $startdirname = $cwd = $ENV{"PWD"} ;
+#  SO, we'll just make startdirname = $tttdata, and do an initial chdir 
+# with that as argument.  Later, we use it again at the end of the module
+# loop.
+$startdirname = $tttdata ;
+print "startdirname = $startdirname\n" ;
+chdir $startdirname or die "Couldn't chdir to $startdirname\n" ;
+
+$rootdirname = "ttr" ;
+if (@ARGV) { $pname = $ARGV[0] ; $rootdirname = "$rootdirname/$pname" ; }
+else { die "Usage:\n  $0 projectname\n" ; }
+print "$0: doing $rootdirname\n" ;
+print "$0: Will create CR report in $rootdirname\n" ;
+
+########################################################################
+# We used to do this in a two-column table.  Now we'll put in names    #
+# and descriptions.                                                    #
+########################################################################
+@modlist = getseqdirlist ($pname) ;
+# print "modlist = @modlist\n" ;
+foreach $modname (@modlist)
+{
+  ($modsimplename = $modname) =~ s/^$rootdirname\/// ;
+
+  ######################################################################
+  # Here we figure out how to separate the module name only from its   #
+  # complete path                                                      #
+  ######################################################################
+  if ($modsimplename =~ /^(.*)\/(.*)$/) # count on greediness
+  {
+    $modpathrootname = $1 ;
+    $modonlyname = $2 ;
+  }
+  else
+  {
+    $modpathrootname = '' ;
+    $modonlyname = $modsimplename ;
+  }
+  $modonlynamelen = length ($modonlyname) ;
+  print "Doing $modsimplename\n" ;
+# print "modname='$modname' modsimplename='$modsimplename' modpathrootname='$modpathrootname' modonly='$modonlyname' len=$modonlynamelen\n" ;
+  if ($modonlynamelen > 31) 
+  {
+    warn "UH OH modonlyname '$modonlyname' len > 31 , truncating\n"  ;
+    $modonlyname = substr $modonlyname, 0, 31 ;
+  }
+
+  if (defined $modonlydefined{$modonlyname})
+  {
+    warn "UH OH We have more than one modname with name $modonlyname\n" ;
+  }
+  $modonlydefined{$modonlyname}++ ;
+
+########################################################################
+# IT WOULD BE GOOD TO GET RID OF chdir IN HERE.  IT MAKES THINGS       #
+# PRETTY DAMNED DIFFICULT                                              #
+########################################################################
+  $modcount++ ;
+  chdir ($modname) or die "Couldn't chdir to $modname: $!\n" ;
+
+  open SEQ, "sequence.txt" 
+      or die "Couldn't open $modname/sequence.txt for reading: $!\n" ;
+  @nodelist = () ;
+  while ($nodenumber = <SEQ>)
+  {
+    chomp $nodenumber ;
+    next if $nodenumber eq "" ;
+    push @nodelist, $nodenumber ;
+  }
+  
+  $modsimplepathname = "$pname/$modsimplename" ;
+# print "modsimplepathname=$modsimplepathname\n" ;
+  $nfiles = scalar @nodelist ;
+
+  # OK, now we're ready to do each node.
+  # ax the potentially existing attr list from the previous module
+  @attrlist = () ;
+  foreach $nodenumber (@nodelist)
+  {
+    $shortnodepath = "$modsimplename/$nodenumber" ;
+    
+    $xmlfilename = "$nodenumber.xml" ;  
+    $attrfilename = "$nodenumber.attr" ;
+    %attrvalue = parseattributefile ($attrfilename) ;
+    $perttxtfilename = "$nodenumber.perttxt" ;
+    ($objtxt, $shrttxt, $projidtxt, $vaptxt) 
+        = getpertinenttxt ($perttxtfilename) ;
+    # if (length ($objtxt) > 100) { substr $objtxt, 100, length($objtxt)-100, "..." ; }
+    $objtxt =~ s/\&quot;/"/g ;
+    $objtxt =~ s/\&gt;/>/g ;
+    $objtxt =~ s/\&lt;/</g ;
+    $objtxt =~ s/\&[rl]dquo;/"/g ;
+    $objtxt =~ s/\&[rl]squo;/'/g ;
+    $objtxt =~ s/\&amp;/\&/g ;
+# Why is this important?  keep it in comments until we know...
+# print STDERR "FOUND an ampersand; combo: '$objtxt'\n" if $objtxt =~ /\&.*;/ ;
+
+    ##################################################################
+    # Now process the xml file                                       #
+    # This tells us if this is a header object, which might be       #
+    # important for listallattrs                                     #
+    # if not, get rid of it, it's expensive                          #
+    ##################################################################
+    $ref = eval { XMLin($xmlfilename) };
+    if ($@) 
+    { 
+      print STDERR "basenodename $basenodename htmlfilename $htmlfilename xmlfilename $xmlfilename\n" ;
+      print STDERR "$@\n" ; 
+# not well-formed (invalid token) at line 17, column 72, byte 597 at /Library/Perl/5.8.1/darwin-thread-multi-2level/XML/Parser.pm line 187
+      if ($@ =~ /not well-formed \(invalid token\) at line (\d+), column (\d+),/s)
+      {
+	$errlinenumber = $1 ;
+	$errcolnumber = $2 ;
+	reporterrorinxml ($xmlfilename, $errlinenumber, $errcolnumber) ;
+      }
+      else
+      {
+	print STDERR "Oh well, some other error syntax\n" ;
+      }
+      next ;
+    }
+    # we need to know if this is a heading - isOutline = true. 
+    ($moddate, $moddatetype, $mname, $oid, $onum, $localpname, $reportdate, 
+     $isheading, $objURL,
+     $isTableHeader, $isTableRow, $isTableCell
+	   ) = gettoplevelattrs ($ref) ;
+    $isTablePart = ($isTableHeader or $isTableRow or $isTableCell) ;
+
+    unless (scalar @attrlist)    # if attrlist is empty, must be first one
+    {
+      @attrlist = sort keys %attrvalue ;
+      $outcolnum = 0 ;
+      $outrownum++ ; $outcolnum = 0 ;
+
+    }
+    $outcolnum = 0 ;
+    # join ("\t", ($moddate, $moddatetype, $mname, $oid, $onum, $localpname, $reportdate, 
+     # $isTableHeader, $isTableRow, $isTableCell)) . "\n" ;
+    if (defined $attrvalue{"CR ID"} and $attrvalue{'CR ID'} ne '')
+    {
+      $crid = $attrvalue{'CR ID'} ;
+
+      if (defined $crrecordsref{$crid})
+      {
+        $crrecordsref = $crrecordsref{$crid} ;
+      }
+      else
+      {
+	# start with an empty array
+        $crrecordsref = [ ] ;
+	$crrecordsref{$crid} = $crrecordsref ;
+      }
+      $objrecordref = { 
+	     'Module Path'   => $modsimplename,
+	     'Object ID'     => $oid,
+	     'Object Text'   => $objtxt,
+                  } ;
+      push @$crrecordsref, $objrecordref ;   # add this record to collection
+
+      foreach $attrname (@reportedattrs)
+      {
+        if (defined $attrvalue{$attrname} and $attrvalue{$attrname} ne '')
+        {
+          $val = $attrvalue{$attrname} ;
+          $val =~ s/\&quot;/"/g ;
+          $val =~ s/\&gt;/>/g ;
+          $val =~ s/\&lt;/</g ;
+	  $val =~ s/\&[rl]dquo;/"/g ;
+	  $val =~ s/\&[rl]squo;/'/g ;
+	  $val =~ s/\&amp;/\&/g ;
+
+          $val = correctANSI1252($val) ;
+	    
+        }
+        else 
+	{ 
+	    $val = "" ;
+	    $val = "NA" if $attrname eq 'TMT ID' ;
+	}
+	$objrecordref->{$attrname} = $val ;
+      }
+    }
+    $outrownum++ ;
+
+  }
+  chdir ($startdirname) or die "Couldn't chdir to $startdirname: $!\n" ;
+}
+
+$reportpathname = "$rootdirname/CRreport.html" ;
+open H, "> $reportpathname" or die "Couldn't open $reportpathname for writing: $!\n" ;
+$date = `date` ;
+print H htmlheader ("TMT Change Request Report as of $date") ;
+
+@crids = sort keys (%crrecordsref) ;
+# print "CRIDS = @crids\n" ;
+@htmlkeys = ('Module Path', 'TMT ID', 'Object ID', 
+             'Object Text', 'CR Text', 
+             'CR State', 'CR History') ;
+# start table and the header row
+print H "<H1>TMT Change Request Report</H1>\n" ;
+print H "<H2>Generated $date</H2>\n" ;
+
+print H "<UL>\n" ;
+foreach $crid (@crids)
+{
+  print H "  <LI><a href=\"#table$crid\">$crid</a></LI>\n" ;
+}
+print H "</UL>\n" ;
+
+
+foreach $crid (@crids)
+{
+  print H "<a name=\"table$crid\">\n" ;
+  print H "<table border=1>\n" ;
+  print H "<caption><font face=\"Sans-serif\" size=+1>CR ID $crid</font></caption>\n" ;
+  print H "  <tr><th>CRID</th>\n" ;
+  foreach $key (@htmlkeys)
+  {
+    print H "    <th>$key</th>\n" ;
+  }
+  print H "  </tr>\n" ;
+
+  $crrecordsref = $crrecordsref{$crid} ;
+  foreach $objrecordref (@$crrecordsref)
+  {
+    print H "  <tr><td>$crid</td>\n" ;
+    $modsimplename = $objrecordref->{'Module Path'} ;
+    $oid           = $objrecordref->{'Object ID'} ;
+    $linkstr = "<a href=\"$modsimplename/$oid.html\">" ;
+    # @keys = sort keys (%$objrecordref) ;
+    foreach $key (@htmlkeys)
+    {
+      $val = $objrecordref->{$key} ;
+      # print "\t$key\t$val\n" ;
+      if ($key eq 'Object ID' or $key eq 'TMT ID')
+      {
+        if ($val eq '') { $val='&lt;NONE&gt;' ; }
+	$val = "$linkstr$val</a>" ;
+      }
+      print H "    <td>$val</td>\n" ;
+    }
+    print H "  </tr>\n" ;
+  }
+  print H "</table>\n" ;
+}
+print H "</body></html>\n" ;
+close H ;
+
+
+# END OF MAIN
+sub ismodule # ($dirname, @dirlist) 
+{
+  my ($dirname, @dirlist) = @_ ;
+  my ($ismodule, $testname) ;
+  $ismodule = 1 ;
+  foreach $testname (@dirlist)
+  {
+    next if $testname eq $dirname ;   # if self, don't test!
+    next unless $testname =~ /^$dirname\// ;    # if testname is not substring
+                                                # of dirname, keep looking
+    $ismodule = 0 ;   # we found that dirname is a substring of testname,
+                      # so this isn't a module
+    last ;
+  }
+  # experiment.  If it seems to be a module, check to see if there's 
+  # anything in it. 
+  if ($ismodule)
+  {
+    @contents = getfilelist ($dirname) ;
+    if ( scalar @contents == 0 ) 
+    { 
+      print "  excluding $dirname, no contents\n" ;
+      $ismodule = 0 ; 
+    }
+  }
+  return $ismodule ;
+}
+
+sub lookinside
+{
+  my ($v) = @_ ;
+  my ($reftype) = ref $v ;
+  my ($i) ;
+  my ($innerv, $innerk) ;
+  my ($haschunks) = 0 ;
+
+  if ($reftype) 
+  {
+    if ($reftype eq "ARRAY")
+    {
+      for ($i = 0 ; $i < scalar (@$v) ; $i++)
+      {
+	$innerv = $v->[$i] ;
+	return 1 if lookinside ($innerv) ;
+      }
+    }
+    elsif ($reftype eq "HASH")
+    {
+      foreach $innerk (keys %$v)
+      {
+	if ($innerk eq "Chunk")
+	{
+	  $haschunks = 1 ;
+	  last ;
+	}
+	else 
+	{
+	  $innerv = $$v{$innerk} ;
+	  return 1 if lookinside ($innerv) ;
+	}
+      }
+    }
+  }
+  return $haschunks ;
+}
+
+sub lookref
+{
+  my ($v, $txtref, $htmlref) = @_ ;
+  my ($reftype) ;
+  my ($i) ;
+  my ($innerv, $innerk) ;
+  my ($chunkv, $chunkreftype) ;
+  my ($innerchunkv) ;
+
+# print "RAW v=$v\n" ;
+
+  $reftype = ref $v ;
+  if ($reftype) 
+  { 
+    if ($reftype eq "ARRAY")
+    {
+      for ($i = 0 ; $i < scalar (@$v) ; $i++)
+      {
+        $innerv = $v->[$i] ;
+        lookref ($innerv, $txtref, $htmlref) ;
+      }
+    }
+    elsif ($reftype eq "HASH")
+    {
+      foreach $innerk (keys %$v)
+      {
+        if ($innerk eq "Chunk")
+        {
+          $chunkv = $$v{$innerk} ;
+          $chunkreftype = ref $chunkv ;
+          # print "chunk ref type is $chunkreftype\n" ;
+          if ($chunkreftype eq "ARRAY")
+          {
+            for ($i = 0 ; $i < scalar (@$chunkv) ; $i++)
+            {
+              $innerchunkv = $chunkv->[$i] ;
+              # print "CALLING lookatchunk from array value\n" ;
+              lookatchunk ($innerchunkv, $txtref, $htmlref) ;
+            }
+          }
+          elsif ($chunkreftype eq "HASH")
+          {
+            # print "CALLING lookatchunk from hash value\n" ;
+            lookatchunk ($chunkv, $txtref, $htmlref) ;
+          }
+          else { print "HUH????\n" ; }
+        }
+        else 
+        {
+          $innerv = $$v{$innerk} ;
+          lookref ($innerv, $txtref, $htmlref) ;
+        }
+      }
+    }
+    else { print "Huh?\n" ; }
+  }
+  else 
+  {
+    # print "-->$v<--" ; 
+  }
+    
+}
+
+sub lookatchunk
+{
+  my ($chunkv, $txtref, $htmlref) = @_ ;
+  my ($k, $v) ;
+  my ($type) ;
+  my ($text) ;
+  my ($filename) ;
+  my ($chunkk) ;
+  my ($bold, $italic, $underline, $strikethru, $superscript, 
+      $subscript, $newline) ;
+      
+  if (ref $chunkv ne "HASH") { print "UH OH CHUNKV not of type HASH\n" ; }
+  else
+  {
+    ($bold, $italic, $underline, $strikethru, $superscript, 
+      $subscript, $newline) = getchunkattrs ($chunkv) ;
+    $$htmlref .= "<b>" if $bold ;
+    $$htmlref .= "<i>" if $italic ;
+    $$htmlref .= "<u>" if $underline ;
+    $$htmlref .= "<s>" if $strikethru ;
+    $$htmlref .= "<sup>" if $superscript ;
+    $$htmlref .= "<sub>" if $subscript ;
+
+    $type = $$chunkv{"Type"} ;
+    if ($type eq "text")
+    {
+      $text = $$chunkv{"Text"} ;
+      $$htmlref .= $text unless
+	      ref ($text) eq "HASH" and scalar (keys %$text) == 0 ;
+      $$txtref  .= $text unless
+	      ref ($text) eq "HASH" and scalar (keys %$text) == 0 ;
+    }
+    elsif ($type eq "OLE")
+    {
+      $filename = $$chunkv{"Filename"} ;
+      $filename =~ s/^.*\\// ;   # get rid of path and backslash
+      $$htmlref .= "<img src=\"$filename\">" ;
+      $$txtref  .= "<img>" ;  # work OK? brackets any problem
+    }
+    elsif ($type eq "URL")
+    {
+      $url = $$chunkv{"Text"} ;
+      $$htmlref .= $url ;
+      $$txtref  .= $url ;
+    }
+    else {print "UH OH Don't know chunk type $type\n" ; }
+
+    $$htmlref .= "</sub>" if $subscript ;
+    $$htmlref .= "</sup>" if $superscript ;
+    $$htmlref .= "</s>" if $strikethru ;
+    $$htmlref .= "</u>" if $underline ;
+    $$htmlref .= "</i>" if $italic ;
+    $$htmlref .= "</b>" if $bold ;
+
+    $$htmlref .= "<br>" if $newline ;
+    $$txtref .= "\n" if $newline ;
+    $$htmlref .= "\n" ;
+  }
+}
+
+sub getchunkattrs 
+{
+  # assume it's a hash
+  my ($ch) = @_ ;
+  # attrs are: 
+  #   bold, italic, underline, strikethru, superscript, subscript, newline
+  # ignore last, charset
+  my ($bold, $italic, $underline, $strikethru, $superscript, 
+      $subscript, $newline) = (0, 0, 0, 0, 0, 0, 0) ;
+  $bold = 1 if defined $$ch{"bold"} and $$ch{"bold"} eq "true" ;
+  $italic  = 1 if defined $$ch{"italic"} and $$ch{"italic"} eq "true" ;
+  $underline = 1 if defined $$ch{"underline"} and $$ch{"underline"} eq "true" ;
+  $strikethru = 1 if defined $$ch{"strikethru"} and $$ch{"strikethru"} eq "true" ;
+  $superscript = 1 if defined $$ch{"superscript"} and $$ch{"superscript"} eq "true" ;
+  $subscript = 1 if defined $$ch{"subscript"} and $$ch{"subscript"} eq "true" ;
+  $newline = 1 if defined $$ch{"newline"} and $$ch{"newline"} eq "true" ;
+
+  return ($bold, $italic, $underline, $strikethru, $superscript, 
+      $subscript, $newline) ;
+}
+
+# SCALAR
+# ARRAY
+# HASH
+# CODE
+# REF
+# GLOB
+# LVALUE
+
+sub reporterrorinxml # ($inxmlname, $errlinenumber, $errcolnumber) ;
+{
+  my ($fname, $lnum, $cnum) = @_ ;
+  local (*ERRXMLIN) ;
+  open ERRXMLIN, $inxmlname 
+      or die "Couldn't open $inxmlname for reading: $!\n" ;
+  print STDERR "ERROR in $inxmlname, line $lnum, column $cnum\n" ;
+  while (<ERRXMLIN>)
+  {
+    if ($. == $lnum)
+    {
+      print STDERR ;
+      print STDERR ('.' x ($cnum-1)) . "^\n" ;
+      $c = substr $_, $cnum, 1 ;
+      print STDERR "ord of character is " . (ord($c)) . "\n" ;
+      last ;
+    }
+  }
+  close ERRXMLIN ;
+}
+
+
+# FOR PRINTING TRIPLE, WE ASSUME NOTHING UNTOWARD IN first two elements
+# but there is the matter of new-lines...
+sub printtriplecsv # (node,rel,directobject) # could generalize, but...
+{
+  my ($node, $rel, $do) = @_ ;
+  my $result ;
+  $result = "$node,$rel," ;
+  $do =~ s/"/""/g ;
+  chomp $do ;
+  $result .= '"' . $do . '"' ;
+  return $result ;
+}
+  
+sub getobjtxt
+{
+  my ($fname) = @_ ;
+  my ($objtxt) ;
+  my (@objtxt) ;
+  local *OBJTXT ;
+
+  open OBJTXT, "$fname"
+      or die "Couldn't open objtxt file $fname for reading: $!\n" ;
+  @objtxt = (<OBJTXT>) ;
+  print $fname . "\t" . $#objtxt . "\n" if $#objtxt > 0 ;
+  $objtxt = $objtxt[0] ;
+  if (!defined $objtxt) { $objtxt = "" ; }
+  $objtxt =~ s/\\/\\\\/g ;   # backslash-quote any backslashes
+  close OBJTXT ;
+  return $objtxt ;  # for now
+}
+
+sub correctANSI1252
+{
+  my ($s) = @_ ;
+  my $result ;
+  my $foundone = 0 ;
+  my $i ;
+  my $c, $o ;
+  for ($i = 0 ; $i < length($s) ; $i++)
+  {
+    $c = substr $s, $i, 1 ;
+    $o = ord $c ;
+    if ($o > 127) { $foundone = 1 ; break ; }
+  }
+  
+  # There's a way to do all this in Perl in a simple RE 
+  # substitution, but I'm sure I don't know how.
+  $result = '' ;
+  if ($foundone)
+  {
+    for ($i = 0 ; $i < length($val) ; $i++)
+    {
+      $c = substr $val, $i, 1 ;
+      $o = ord $c ;
+      $c = "\&#$o" if $o > 127 && $o < 256 ;
+      $c = '&nbsp;' if $o == 160 ;
+      $result .= $c ;
+    }
+  }
+  else
+  {
+    $result = $s ;
+  }
+
+  return $result ;
+}
+

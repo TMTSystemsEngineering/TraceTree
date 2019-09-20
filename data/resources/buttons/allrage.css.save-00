@@ -1,0 +1,115 @@
+
+div.rage_button_explanation {
+	float: left;
+	width: 120px;
+	height: 35px;
+}
+div.rage_button_explanation a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('explanation.png') top left no-repeat;
+	color: #FFFFFF;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+div.rage_button_explanation a:hover {
+	background-position: -120px 0;
+	color: #000000;
+}
+div.rage_button_explanation a:active {
+	background-position: -240px 0;
+	color: #FFFFFF;
+}
+
+div.rage_button_caveat {
+	float: left;
+	width: 96px;
+	height: 35px;
+}
+div.rage_button_caveat a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('caveat.png') top left no-repeat;
+	color: #000000;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+div.rage_button_caveat a:hover {
+	background-position: -96px 0;
+	color: #000000;
+}
+div.rage_button_caveat a:active {
+	background-position: -192px 0;
+	color: #000000;
+}
+
+
+div.rage_button_module_index {
+	float: left;
+	width: 100px;
+	height: 35px;
+}
+div.rage_button_module_index a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('module_index.png') top left no-repeat;
+	color: #FFFFFF;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+div.rage_button_module_index a:hover {
+	background-position: -100px 0;
+	color: #FFFFFF;
+}
+div.rage_button_module_index a:active {
+	background-position: -200px 0;
+	color: #FFFFFF;
+}
+
+div.rage_button_object_id_index {
+	float: left;
+	width: 114px;
+	height: 35px;
+}
+
+
+div.rage_button_object_id_index a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('object_id_index.png') top left no-repeat;
+	color: #FFFFFF;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+
+
+div.rage_button_object_id_index a:hover {
+	background-position: -114px 0;
+	color: #FFFFFF;
+}
+
+
+div.rage_button_object_id_index a:active {
+	background-position: -228px 0;
+	color: #FFFFFF;
+}

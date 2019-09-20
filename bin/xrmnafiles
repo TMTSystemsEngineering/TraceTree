@@ -1,0 +1,139 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+require "fileutils.pl" ;
+require "ttutils.pl" ;
+
+use DB_File ;
+
+$rootdirname = "ttr" ;
+if (@ARGV) { $pname = $ARGV[0] ; }
+else { die "Usage:  xrmnafiles projectname\n" ; }
+$rootdirname .= "/$pname" ;
+print STDERR "xrmnafiles: doing $rootdirname\n" ;
+
+$md5name = "LogsAndData/$pname.md5" ;
+print "$0: using md5name\n" ;
+tie %dotsums, "DB_File", $md5name, O_RDWR, 0666, $DB_HASH
+    or die "Couldn't open '$md5name': $!\n" ;
+
+@seqdirlist = getseqdirlist ($pname) ;
+@emptydirlist = getemptydirlist ($pname) ;
+@nodelist = getnodelist ($pname) ;
+
+foreach $emptydirname (@emptydirlist)
+{
+  if (-d $emptydirname)
+  {
+    print "removing empty dir: $emptydirname\n" ;
+    system "rm -r $emptydirname" ;
+  }
+}
+
+# now make a hash of everything.  Sounds funny.
+foreach $nodepath (@nodelist)
+{
+  $nodepaths{$nodepath}++ ;
+}
+print "scalar keys nodepaths = " . ( scalar keys %nodepaths ) . "\n" ;
+# foreach $nodepath (sort keys %nodepaths) { print "$nodepath\n" ; }
+# exit 0 ;
+
+foreach $seqdirname (@seqdirlist)
+{
+  # print "seq dir: $seqdirname\n" ;
+  @filelist = getfilelist ($seqdirname) ;
+  foreach $filename (@filelist)
+  {
+    if ($filename =~ /^([\-\d]+)\.[\.\w]+$/)
+    {
+      $node = $1 ;
+      if ($node =~ /^(\d+)\-(\d+)$/) { $node = $1 ; }  # take care of pngs
+      $nodepath = "$seqdirname/$node" ;
+      # next if isInList ($nodepath, \@nodelist) ;
+      next if defined $nodepaths{$nodepath} ;
+      $pathname = "$seqdirname/$filename" ;
+      print "  Deleting $pathname\n" ;
+      unlink $pathname or warn "Couldn't delete $pathname: $!\n" ;
+      delete $dotsums{$pathname} ;
+    }
+  }
+
+}
+print scalar @nodelist;
+print "\n" ;
+
+print "$0: clearing old files from md5 database\n" ;
+foreach $pathname (keys %dotsums)
+{
+  if ($pathname =~ /^(.*\/\d+)\-\d+\.png(\.bak)?$/)
+  {
+    $nodepath = $1 ;
+  }
+  elsif ($pathname =~ /^(.*\/\d+)\.[\.\w]+$/)
+  {
+    $nodepath = $1 ;
+  }
+  else 
+  { 
+    next ; 
+  }
+  # print "    nodepath = $nodepath\n" ;
+  if (defined ($nodepaths{$nodepath})) { }
+  else                                 
+  { 
+    print "  $0: '$pathname' NOT FOUND, deleting from DB\n" ; 
+    delete $dotsums{$pathname} ;
+  }
+
+
+}
+untie %dotsums ;
+
+sub isInList
+{
+  my ($iswhat, $inlistref) = @_ ;
+  my $isin = 0 ;
+
+  foreach $inlist (@$inlistref)
+  {
+    $isin = $iswhat eq $inlist ;   # exact string match, please
+    last if $isin ;
+  }
+  return $isin ;
+}
+

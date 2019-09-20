@@ -1,0 +1,27 @@
+#! /usr/bin/bash -l
+
+# first check status.  
+# Has to be DXL_DUMP_BUSY or DXL_DUMP_DONE
+# (watchprogress takes care of busy)
+xstatus
+thestatus=$?
+echo docronjob: the status from xstatus is $thestatus
+# bash is terrible with conditionals; it's a jobs program for arcane programmers
+# if [[ $? -ne 1 ]] && [[ $? -ne 2 ]] ; then exit $?; fi
+if [[ $thestatus -eq 0 ]] ; then exit $thestatus ; fi
+echo A
+if [[ $thestatus -eq 3 ]] ; then exit $thestatus ; fi
+echo B
+if [[ $thestatus -eq 4 ]] ; then exit $thestatus ; fi
+echo got past the conditionals
+
+# bracket the generation with status indicators.  Prevents DOORS from
+# starting while we're still processing the website.
+setprocessstatus 3      # indicates website generation now
+watchprogress -doit > $TT_LOGS/cronjob_`date +%Y-%m-%dT%H-%M`.log 2>&1 
+setprocessstatus 0      # indicates done with generation; idle
+
+ls -lrt $TT_LOGS/*.log 
+ls -l $TT_TTR/*/index.html
+ls -l $TT_TRACE/*/index.html
+

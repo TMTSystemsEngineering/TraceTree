@@ -1,0 +1,6 @@
+#! /usr/bin/bash -l
+
+testcronsub -doit > $TT_LOGS/testjob_`date +%Y-%m-%dT%H-%M`.log  2>&1 
+ls -lrt $TT_LOGS/*.log 
+ls -l $TT_TTR/*/index.html
+ls -l $TT_TRACE/*/index.html

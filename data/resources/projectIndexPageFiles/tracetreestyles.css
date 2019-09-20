@@ -1,0 +1,325 @@
+.stylered {color: #FF0000; }
+.styleboldred {font-weight: bold; color: #FF0000; }
+a:link { font-weight: normal; font-family: Verdana, Arial, Helvetica, sans-serif; }
+a:visited { font-weight: normal; font-family: Verdana, Arial, Helvetica, sans-serif; }
+hr { height:3px; width: 400px; margin-left: 0px; border:0px; border-top:4px solid #aacccc; }
+
+div.rage_button_this_module {
+	float: left;
+	width: 100px;
+	height: 35px;
+}
+div.rage_button_this_module a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('this_module.png') top left no-repeat;
+	color: #FFFFFF;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+div.rage_button_this_module a:hover {
+	background-position: -100px 0;
+	color: #FFFFFF;
+}
+div.rage_button_this_module a:active {
+	background-position: -200px 0;
+	color: #FFFFFF;
+}
+
+div.rage_button_key {
+	float: left;
+	width: 53px;
+	height: 35px;
+}
+div.rage_button_key a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('key.png') top left no-repeat;
+	color: #FFFFFF;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+div.rage_button_key a:hover {
+	background-position: -53px 0;
+	color: #FFFFFF;
+}
+div.rage_button_key a:active {
+	background-position: -106px 0;
+	color: #FFFFFF;
+}
+
+div.rage_button_all_modules {
+	float: left;
+	width: 100px;
+	height: 35px;
+}
+div.rage_button_all_modules a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('all_modules.png') top left no-repeat;
+	color: #FFFFFF;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+div.rage_button_all_modules a:hover {
+	background-position: -100px 0;
+	color: #FFFFFF;
+}
+div.rage_button_all_modules a:active {
+	background-position: -200px 0;
+	color: #FFFFFF;
+}
+
+div.rage_button_requirement_text {
+	float: left;
+	width: 131px;
+	height: 35px;
+}
+div.rage_button_requirement_text a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('requirement_text.png') top left no-repeat;
+	color: #FFFFFF;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+div.rage_button_requirement_text a:hover {
+	background-position: -131px 0;
+	color: #FFFFFF;
+}
+div.rage_button_requirement_text a:active {
+	background-position: -262px 0;
+	color: #FFFFFF;
+}
+
+div.rage_button_explanation {
+	float: left;
+	width: 120px;
+	height: 35px;
+}
+div.rage_button_explanation a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('explanation.png') top left no-repeat;
+	color: #FFFFFF;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+div.rage_button_explanation a:hover {
+	background-position: -120px 0;
+	color: #000000;
+}
+div.rage_button_explanation a:active {
+	background-position: -240px 0;
+	color: #FFFFFF;
+}
+
+div.rage_button_caveat {
+	float: left;
+	width: 96px;
+	height: 35px;
+}
+div.rage_button_caveat a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('caveat.png') top left no-repeat;
+	color: #000000;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+div.rage_button_caveat a:hover {
+	background-position: -96px 0;
+	color: #000000;
+}
+div.rage_button_caveat a:active {
+	background-position: -192px 0;
+	color: #000000;
+}
+
+
+div.rage_button_module_index {
+	float: left;
+	width: 100px;
+	height: 35px;
+}
+div.rage_button_module_index a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('module_index.png') top left no-repeat;
+	color: #FFFFFF;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+div.rage_button_module_index a:hover {
+	background-position: -100px 0;
+	color: #FFFFFF;
+}
+div.rage_button_module_index a:active {
+	background-position: -200px 0;
+	color: #FFFFFF;
+}
+
+div.rage_button_object_id_index {
+	float: left;
+	width: 114px;
+	height: 35px;
+}
+
+
+div.rage_button_object_id_index a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('object_id_index.png') top left no-repeat;
+	color: #FFFFFF;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+
+
+div.rage_button_object_id_index a:hover {
+	background-position: -114px 0;
+	color: #FFFFFF;
+}
+
+
+div.rage_button_object_id_index a:active {
+	background-position: -228px 0;
+	color: #FFFFFF;
+}
+
+div.rage_button_previous {
+  	float: left;
+	width: 96px;
+	height: 34px;
+}
+
+
+div.rage_button_previous a {
+    display: block;
+    margin: 0px;
+    overflow: hidden;
+    text-decoration: none;
+    height: 100%;
+    background: url('previous.png') top left no-repeat;
+    color: #000000;
+    font-family: 'Arial';
+    font-size:14px;
+    line-height: 34px;
+    text-align: center;
+}
+
+
+div.rage_button_previous a:hover {
+    background-position: -96px 0;
+    color: #000000;
+}
+
+
+div.rage_button_previous a:active {
+    background-position: -192px 0;
+    color: #000000;
+}
+
+div.rage_button_next {
+	float: left;
+	width: 96px;
+	height: 35px;
+}
+
+
+div.rage_button_next a {
+	display: block;
+	margin: 0px;
+	overflow: hidden;
+	text-decoration: none;
+	height: 100%;
+	background: url('next.png') top left no-repeat;
+	color: #000000;
+	font-family: 'Arial';
+	font-size:14px;
+	line-height: 35px;
+	text-align: center;
+}
+
+
+div.rage_button_next a:hover {
+	background-position: -96px 0;
+	color: #000000;
+}
+
+
+div.rage_button_next a:active {
+	background-position: -192px 0;
+	color: #000000;
+}
+
+div.rage_button_linktodoors {        
+  float: left;        
+  width: 141px;        
+  height: 34px;
+}
+
+div.rage_button_linktodoors a {
+    display: block;
+    margin: 0px;
+    overflow: hidden;
+    text-decoration: none;
+    height: 100%;
+    background: url('link_to_doors.png') top left no-repeat;
+    color: #FFFFFF;
+    font-family: 'Arial';
+    font-size:14px;
+    line-height: 34px;
+    text-align: center;
+}
+
+div.rage_button_linktodoors a:hover {
+    background-position: -141px 0;
+    color: #FFFFFF;
+}
+
+div.rage_button_linktodoors a:active {
+    background-position: -282px 0;
+    color: #FFFFFF;
+  }
+

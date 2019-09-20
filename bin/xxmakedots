@@ -1,0 +1,729 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+
+use DB_File ;
+use Digest::MD5 ;
+
+require "fileutils.pl" ;
+require "miscutils.pl" ;
+require "wrap.pl" ;
+require "ttutils.pl" ;
+require "tt_projuniq.pl" ;
+
+$TIMELY = 0 ;
+$UNTIMELY = 1 ;
+$CERTAIN = 0 ;
+$UNCERTAIN = 1 ;
+
+# This program makes up for distinct lack in DOORS: can't detect source
+# links unless source module is open.  But we needed to avoid opening all
+# modules.
+$rootpathname = "ttr" ;
+if (@ARGV) 
+{ 
+  $pname = $ARGV[0] ;
+  $rootdirname = "$rootpathname/$pname" ; 
+}
+else { die "Usage:\n  $0 projectname\n" ; }
+# $doNotVap = ($pname eq "DSN" or $pname eq "SES_JUNO") ;
+print "$0: doing $rootdirname\n" ;
+($doNotVap, $doProjID) = getProjectUniq ($pname) ;
+
+$logfilename = "LogsAndData/$pname.xxmakedots.out" ;
+open LOG, "> $logfilename" or 
+    die "Couldn't open $logfilename for writing: $!\n" ;
+print "xxmakedots: opened log file $logfilename\n" ;
+%logrecords = () ;   # don't really need this, but...
+
+$md5name = "LogsAndData/$pname.md5" ;
+print "$0: using $md5name\n" ;
+tie %md5s, "DB_File", $md5name, O_RDWR, 0666, $DB_HASH
+    or die "Couldn't open '$md5name': $!\n" ;
+
+# @lnklist = getfilelistrecursive ($rootdirname, "\\.lnks\$") ;
+# $nlnks = scalar @lnklist ;
+
+########################################################################
+# Here we read in all the link information and make linked lists       #
+# internally.                                                          #
+########################################################################
+$alllinkfilename = "$rootdirname/alllinks.txt" ;
+open ALL, $alllinkfilename
+    or die "Couldn't open $alllinkfilename for reading: $!\n" ;
+    
+$count = 0 ;
+
+while (<ALL>)
+{
+  chomp ;
+  # three possibilities:
+  # /MSL/MS_Elements/IPE    198     t       /MSL/MS 507
+  # /MSL/MS_Elements/IPE    199     CreateModDate   2006-12-21 11:38:24
+  # /MSL/MS_Elements/IPE    201     ModuleBaseline  2005-09-07 08:07:50
+  ($thisdirname, $thisabsno, $s2, $s3, $s4) = split /\t/ ;
+  $thisnodename = "$thisdirname/$thisabsno" ;
+  $thisnodename =~ s/^\/$pname\/// ;   # get rid of /pname/ at front
+  $thisnoderef = createnewnode ($thisnodename) ; # conditional create
+  if ($s2 eq "t")   # then it's a link
+  {
+    $tgtnodename = "$s3/$s4" ;
+    $tgtnodename =~ s/^\/$pname\/// ;   # get rid of /pname/ at front
+    $tgtnoderef = createnewnode ($tgtnodename) ; # conditional create
+    
+    ################################################################
+	#     We make the nodes, but if 'this' and 'tgt' are the same  #
+	#     node, we don't link but do print an error.               #
+    ################################################################
+    if ($thisnodename ne $tgtnodename)
+    {
+      addtargetto ($thisnoderef, $tgtnoderef) ;
+    }
+    else
+    {
+      print LOG "DETECTED LINK TO SELF, ignoring: '$thisnodename'\n" ;
+    }
+  }
+  else   # it must be a date
+  {
+# print "for datemodtype, thisnodename = $thisnodename\n" ;
+    $datemodtype{$thisnodename} = $s2 ;
+    $datemod{$thisnodename} = $s3 ;
+  }
+}
+
+print LOG "scalar of keys of noderefs = " . (scalar (keys %noderefs)) . "\n" ;
+print LOG "scalar of keys of datemodtype = " . (scalar (keys %datemodtype)) . "\n" ;
+print LOG "tocountlinks = $tocountlinks\n" ;
+print LOG "fromcountlinks = $fromcountlinks\n" ;
+
+########################################################################
+# Just read in all the object texts and short texts once.  Otherwise   #
+# every time a node is linked to by some other, no matter how far      #
+# away, we read these two files again.                                 #
+########################################################################
+$ntodo = scalar keys %datemodtype ;
+foreach $nodename (sort keys %datemodtype)
+{
+  $perttxtfilename = "$rootdirname/$nodename.perttxt" ;
+  ($objtxt, $shrttxt, $projidtxt, $vaptxt) 
+      = getpertinenttxt ($perttxtfilename) ;
+  $objtxt{$nodename} = $objtxt ;
+  $shrttxt{$nodename} = $shrttxt unless $shrttxt eq '' ;
+  $vaptxt{$nodename} = $vaptxt unless ($doNotVap or $vaptxt eq '') ;
+# print STDERR "vaptxt = '$vaptxt' vaptxt{$nodename} = '$vaptxt{$nodename}'\n" ;
+  $projidtxt{$nodename} = $projidtxt if ($doProjID and $projidtxt ne '') ;
+
+  $ndone++ ;
+  print STDERR "xxmakedots: done reading $ndone of $ntodo\r" 
+      if $ndone%50 == 0 ;
+}
+print STDERR "xxmakedots: done reading $ndone of $ntodo\n"  ;
+
+########################################################################
+# Now we write all the files.                                          #
+########################################################################
+$ndone = 0 ; 
+$nloops = 0 ;
+foreach $nodename (sort keys %datemodtype)
+{
+  $dotfilename = "$rootdirname/$nodename.dot" ;
+  $bigdotfilename = "$rootdirname/$nodename.big.dot" ;
+  $vapdotfilename = "$rootdirname/$nodename.vap.dot" 
+      unless $doNotVap;
+  ($thishtmlfilename = $dotfilename) =~ s/dot$/html/ ;
+  ($thishtmlfilepath = $thishtmlfilename) =~ s/\/\d+.html$// ;
+  # dotfilename and thishtmlfilename start with ttr/projectname...     #
+
+  ######################################################################
+  # try opening as '+>' to avoid so much read write to big             #
+  # directories.  Might not help, we'll see.                           #
+  ######################################################################
+  open DOT, "+> $dotfilename"
+      or die "Couldn't open $dotfilename for writing: $!\n" ;
+  open BIGDOT, "+> $bigdotfilename"
+      or die "Couldn't open $bigdotfilename for writing: $!\n" ;
+  unless ($doNotVap)
+  {
+    open VAPDOT, "+> $vapdotfilename"
+	or die "Couldn't open $vapdotfilename for writing: $!\n" ;
+  }
+warn "NOT DEFINED $nodename" if !defined $nodename ;
+  $dotmd5 = Digest::MD5->new ;
+  $bigdotmd5 = Digest::MD5->new ;
+  $vapdotmd5 = Digest::MD5->new unless $doNotVap ;
+
+  $thisnodelabel = makenodelabel ($nodename) ;
+  $thisdotname = makedotname ($nodename) ;
+  printdot("digraph $thisdotname\{\n  rankdir=LR\n" );
+  printbigdot("digraph $thisdotname\{\n  rankdir=LR\n" );
+  printvapdot("digraph $thisdotname\{\n  rankdir=LR\n" )
+      unless $doNotVap ;
+  
+  if (defined $noderefs{$nodename})
+  {
+    undef %traces ;
+    undef %nodes ;
+    undef %fillcolor ;
+    undef %linecolor ;
+    $noderef = $noderefs{$nodename} ;
+    $nodes{$nodename}++ ;
+    $thisdatemodtype = $datemodtype{$nodename} ;
+    $thisdatemod = $datemod{$nodename} ;
+    $srclistref = $noderef->[0] ;
+    $tgtlistref = $noderef->[1] ;
+    $nsrcs = scalar (@$srclistref) ;
+    $ntgts = scalar (@$tgtlistref) ;
+    traceup ("  ", $nodename) ;
+    tracedown ("  ", $nodename) ;
+
+    # print STDERR "doing $nodename\n" ;
+    foreach $nodenameinnode (sort keys %nodes)
+    {
+      $nodehtmlfilename = "$rootdirname/$nodenameinnode.html" ;
+      $relhtmlfilename 
+          = genrelativepath ($thishtmlfilepath, $nodehtmlfilename) ;
+      $relhtmlfilename =~ s/\/$// ;  # why do we have to get rid of trailing /
+      $nodelabel = makenodelabel ($nodenameinnode) ;
+      $nodelabeltoprint = $nodelabel ;   # this is clumsy! to do with 
+                                         # nodenameinnode, 
+                                         # thisnodelabel, etc. 
+      $bignodelabeltoprint = $nodelabel ;  
+      $vapnodelabeltoprint = $nodelabel 
+          unless $doNotVap ;
+          
+      # IF WE HAVE A PROJID, add it here, after the first line.
+# print STDERR "nodenameinnode = $nodenameinnode projidtxt='$projidtxt{$nodenameinnode}\n" ;
+      if ($doProjID and $projidtxt{$nodenameinnode})
+      {
+# print STDERR "actually doing it inside if\n" ;
+        $nodelabeltoprint .= "\\nProjID: " . $projidtxt{$nodenameinnode} ;
+        $bignodelabeltoprint .= "\\nProjID: " . $projidtxt{$nodenameinnode} ;
+        $vapnodelabeltoprint .= "\\nProjID: " . $projidtxt{$nodenameinnode} 
+            unless $doNotVap ;
+      }
+      
+# Leave the font size out of it for now, let xdotsome do the work
+      if (defined $shrttxt{$nodenameinnode})
+      {
+        $nodelabeltoprint .= "\\n" . $shrttxt{$nodenameinnode}  ;
+#        $fontsize = 10 ;  # now the same, but seven's just too small.  
+#                         # Leave the logic in for now 
+      }
+      else
+      {
+#        $fontsize = 10 ;
+      }
+      if (defined $objtxt{$nodenameinnode})
+      {
+	$wrapped = wrap ($objtxt{$nodenameinnode}, 30) ;
+	$wrapped =~ s/\n/\\l/sg ;  # try a slash-l to get left-justified
+        $bignodelabeltoprint .= "\\n" . $wrapped  ;
+#        $fontsize = 10 ;  # now the same, but seven's just too small.  
+#                         # Leave the logic in for now 
+      }
+      else
+      {
+#        $fontsize = 10 ;
+      }
+      unless ($doNotVap)
+      {
+	if (defined $vaptxt{$nodenameinnode})
+	{
+	  # wrapping is problematic here.  We already have newlines
+	  $vaptxt = $vaptxt{$nodenameinnode} ;
+	  @linestowrap = split /\\n/, $vaptxt ;
+	  @wrappedlines = () ;
+	  foreach $line (@linestowrap)
+	  {
+	    $wrappedline = wrap($line, 30) ;
+	    push @wrappedlines, $wrappedline ;
+	  }
+	  $wrapped = join "\n", @wrappedlines ;
+	  ################################################################
+	  # at this point $wrapped should contain all original newlines  #
+	  # plus those introduced by the wrapping process, all as real   #
+	  # newlines.  So they need to be converted back to              #
+	  # backslash-ns for the dot process.  Quote characters need to  #
+	  # be backslash-quoted as well                                  #
+	  ################################################################
+
+	  $wrapped =~ s/"/\\"/g ;
+	  $wrapped =~ s/\n/\\l/sg ;  # try a slash-l to get left-justified
+	  $vapnodelabeltoprint .= "\\n" . $wrapped ;
+	  # $vapfrom = $vapfrom{$nodenameinnode} ;
+	  $vapfrom =~ /^STDV/o ;
+	}
+	else
+	{
+  #        $fontsize = 10 ;
+	}
+      }
+
+      $dotname = makedotname ($nodenameinnode) ;
+      printdot("  $dotname [" );
+      printbigdot("  $dotname [" );
+      printvapdot("  $dotname [" ) unless $doNotVap ;
+#      printdot("fontsize=$fontsize, " );
+      printdot("label=\"$nodelabeltoprint\", shape=box, style=filled, " );
+      printbigdot("label=\"$bignodelabeltoprint\", shape=box, style=filled, " );
+      printvapdot("label=\"$vapnodelabeltoprint\", shape=box, style=filled, " ) 
+          unless $doNotVap ;
+      ##################################################################
+      # Let's see if we can leave BIGDOT as the exception.  Otherwise  #
+      # we end up with an entirely new set of html files.  Need map    #
+      # file anyway don't we?                                          #
+      ##################################################################
+      printdot("URL=\"$relhtmlfilename\", " );
+      printbigdot("URL=\"$relhtmlfilename\", " );
+      printvapdot("URL=\"$relhtmlfilename\", " )
+          unless $doNotVap ;
+      if ($thisnodelabel eq $nodelabel)  # is this the subject node?
+      {
+        $fillcolor = "yellow" ; 
+        $linecolor = ($thisdatemodtype eq "ModuleBaseline") ? "red" : "black" ;
+      }
+      else # it's one of the linked nodes
+      {
+        $fillcolor = $fillcolor{$nodenameinnode} ;
+        $linecolor = $linecolor{$nodenameinnode} ;
+      }
+      $fontcolor = $fillcolor eq "red" ? "white" : "black" ;
+      # color is darker for vaps if secondary attribute name found, and 
+      # yellow for centerpiece 
+# print STDERR "$nodenameinnode vapfrom=$vapfrom\n" ;
+      unless ($doNotVap)
+      {
+	if ($fillcolor eq "yellow")
+	{
+	  $vapfillcolor = $vapfrom ? "lightyellow" : "yellow" ;
+	}
+	else
+	{
+	  $vapfillcolor = $vapfrom ? "white" : "lightgray" ;
+	}
+      }
+      printdot("fillcolor=$fillcolor, color=$linecolor, fontcolor=$fontcolor" );
+      printbigdot("fillcolor=$fillcolor, color=$linecolor, fontcolor=$fontcolor" );
+      printvapdot("fillcolor=$vapfillcolor, color=black, fontcolor=black" )
+          unless $doNotVap ;
+      if (defined $objtxt{$nodenameinnode})
+      {
+        printdot(", tooltip=\"" . $objtxt{$nodenameinnode} . "\"");
+        # No tooltip for BIGDOT, don't need it, do we?
+        printvapdot(", tooltip=\"" . $objtxt{$nodenameinnode} . "\"")
+	    unless $doNotVap ;
+      }
+      printdot("];\n" );
+      printbigdot("];\n" );
+      printvapdot("];\n" )
+          unless $doNotVap ;
+    }
+    foreach $trace (sort keys %traces)
+    {
+      printdot("  $trace ;\n" );
+      printbigdot("  $trace ;\n" );
+      printvapdot("  $trace ;\n" )
+          unless $doNotVap ;
+    }
+  }
+  printdot("}\n" );
+  printbigdot("}\n" );
+  printvapdot("}\n" )
+      unless $doNotVap ;
+  close DOT ;
+  close BIGDOT ;
+  close VAPDOT 
+      unless $doNotVap ;
+
+  ######################################################################
+  # OK, at this point the dot file and bigdot files are written, and   #
+  # the md5s calculated.  Just record them. Woops - NOPE - what's the  #
+  # point if we dont' compare with old?                                #
+  ######################################################################
+  $dotdigest = $dotmd5->hexdigest ;
+  $bigdotdigest = $bigdotmd5->hexdigest ;
+  $vapdotdigest = $vapdotmd5->hexdigest 
+      unless $doNotVap ;
+
+  $dotflagval = $md5s{$dotfilename} ;
+  $bigdotflagval = $md5s{$bigdotfilename} ;
+  $vapdotflagval = $md5s{$vapdotfilename} 
+      unless $doNotVap ;
+
+  $olddotdigest = getmd5digest ($dotflagval) ;
+  $oldbigdotdigest = getmd5digest ($bigdotflagval) ;
+  $oldvapdotdigest = getmd5digest ($vapdotflagval) 
+      unless $doNotVap ;
+
+  if ($olddotdigest ne $dotdigest)
+  {
+    $md5s{$dotfilename} = '1,' . $dotdigest ;
+  }
+  if ($oldbigdotdigest ne $bigdotdigest)
+  {
+    $md5s{$bigdotfilename} = '1,' . $bigdotdigest ;
+  }
+  unless ($doNotVap)
+  {
+    if ($oldvapdotdigest ne $vapdotdigest)
+    {
+      $md5s{$vapdotfilename} = '1,' . $vapdotdigest ;
+    }
+  }
+
+  $ndone++ ;
+  print STDERR "xxmakedots: done writing $ndone of $ntodo\r" 
+      if $ndone%50 == 0 ;
+}
+print STDERR "xxmakedots: done writing $ndone of $ntodo\n"  ;
+print STDERR "xxmakedots: $rootdirname had $nloops loops\n" ;
+print LOG  "$rootdirname had $nloops loops\n" ;
+untie %md5s ;
+
+# rely on globals!
+sub printdot 
+{
+  my (@text) = @_ ;
+  print DOT @text ;
+  $dotmd5->add(@text) ;
+}
+sub printbigdot 
+{
+  my (@text) = @_ ;
+  print BIGDOT @text ;
+  $bigdotmd5->add(@text) ;
+}
+sub printvapdot
+{
+  my (@text) = @_ ;
+  print VAPDOT @text ;
+  $vapdotmd5->add(@text) ;
+}
+
+sub traceup
+{
+  my ($indent, $nodename) = @_ ;
+  my ($noderef, $srclistref, $srcref, $srcname) ;
+  my ($srcdotname, $dotname) ;
+  my ($srcdatemodtype, $srcdatemod) ;
+
+  return if !defined $nodename ;
+  $noderef = $noderefs{$nodename} ;
+  $dotname = makedotname ($nodename) ;
+  $srclistref = $noderef->[0] ;
+  foreach $srcref (@$srclistref)
+  {
+    $srcname = $nameof{$srcref} ;
+    $srcdatemodtype = $datemodtype{$srcname} ;
+    $srcdatemod = $datemod{$srcname} ;
+    if (!defined $srcdatemodtype)
+    {
+      print LOG 
+          "$nodename points to $srcname, which isn't defined - deleted?\n" ;
+    }
+    else
+    {
+      # gt - stringwise greater than - indicates later than
+      $timeliness = ($srcdatemod gt $thisdatemod) ? $UNTIMELY : $TIMELY ;
+      $certainty 
+          = ($srcdatemodtype eq "ModuleBaseline") ? $UNCERTAIN : $CERTAIN ;
+      ##################################################################
+      # For trace up, if it's timely it's OK, no matter than           #
+      # uncertainty, because uncertainty can only make it earlier.     #
+      # But if it's untimely AND uncertain, we make it pink, because   #
+      # the uncertainty could bring it back to timeliness.             #
+      ##################################################################
+      if ($timeliness == $TIMELY) 
+      { 
+	$fillcolor = "lightblue" ;
+        $linecolor = "black" ;
+      }
+      else
+      {
+	if ($certainty == $UNCERTAIN) 
+	{ 
+	  $fillcolor = "pink" ;
+	  $linecolor = "red" ;
+	}
+	else
+	{
+	  $fillcolor = "red" ;
+	  $linecolor = "black" ;
+	}
+      }
+      $fillcolor{$srcname} = $fillcolor ;
+      $linecolor{$srcname} = $linecolor ;
+      $nodes{$srcname}++ ;
+      $srcdotname = makedotname ($srcname) ;
+      ##################################################################
+      # Used to count indents.  Not working for every case.  Try a     #
+      # more direct approach.  If, for this node, we've already        #
+      # encountered a particular link, we don't have to look at it     #
+      # any more, so we stop.  Do this by seeing of a particular       #
+      # trace has already been defined.                                #
+      ##################################################################
+      my $thetrace = "$srcdotname -> $dotname" ;
+      $traces{$thetrace}++ ;
+      if ($traces{$thetrace} < 2) 
+      { 
+        traceup ($indent."  ", $srcname) ; 
+      }
+      else
+      {
+        if ($traces{$thetrace} > 4) # should never happen
+        {
+	  $logrecord = "What the heck?  traceup traces > 4 $thetrace" ;
+	  unless (defined $logrecords{$logrecord})
+	  {
+	    print STDERR "$logrecord\n" ; 
+	    print LOG    "$logrecord\n" ; 
+	  }
+	  $logrecords{$logrecord}++ ; # increment in any case, might want it
+        }
+      }
+#       else
+#       {
+#         $logrecord = "  depth: $srcname -> $nodename" ;
+#         if (!defined $logrecords{$logrecord})
+#         {
+#           print LOG "$logrecord\n" ;
+#         }
+#         $logrecords{$logrecord}++ ;  # increment in any case, might want it 
+#         $nloops++ ;
+#       }
+    }
+  }
+}
+
+sub tracedown
+{
+  my ($indent, $nodename) = @_ ;
+  my ($noderef, $tgtlistref, $tgtref, $tgtname) ;
+  my ($tgtdotname, $dotname) ;
+  my ($tgtdatemodtype, $tgtdatemod) ;
+
+  return if !defined $nodename ;
+  $noderef = $noderefs{$nodename} ;
+  $dotname = makedotname ($nodename) ;
+  $tgtlistref = $noderef->[1] ;
+  foreach $tgtref (@$tgtlistref)
+  {
+    $tgtname = $nameof{$tgtref} ;
+    $tgtdatemodtype = $datemodtype{$tgtname} ;
+    $tgtdatemod = $datemod{$tgtname} ;
+    if (!defined $tgtdatemodtype)
+    {
+      print LOG 
+          "$nodename points from $tgtname, which isn't defined - deleted?\n" ;
+    }
+    else
+    {
+      ##################################################################
+      # for trace down, a target date < thisdate indicates that it's   #
+      # assuredly out of date.  No matter what the ModuleBaseline vs   #
+      # CreateModdate shows, because modulebaseline can only make it   #
+      # yet earlier.  So pink vs. red doesn't really matter.           #
+      # Howewver, if target date >= thisdate, modulebaseline makes     #
+      # the goodness uncertain, so maybe a red band is what's needed.  #
+      ##################################################################
+      # lt - stringwise less than - indicates earlier than
+      $timeliness = ($tgtdatemod lt $thisdatemod) ? $UNTIMELY : $TIMELY ;
+      $certainty = ($tgtdatemodtype eq "ModuleBaseline") ? $UNCERTAIN : $CERTAIN ;
+      if ($timeliness == $TIMELY)
+      {
+	$fillcolor = "lightblue" ;
+	if ($certainty == $CERTAIN) { $linecolor = "black" ; }
+	else                        { $linecolor = "red" ; }
+      }
+      else
+      {
+	$fillcolor = "red" ;
+	$linecolor = "black" ;   # should we really differentiate anyway?
+      }
+      $fillcolor{$tgtname} = $fillcolor ;
+      $linecolor{$tgtname} = $linecolor ;
+
+      $nodes{$tgtname}++ ;
+      $tgtdotname = makedotname ($tgtname) ;
+      my $thetrace = "$dotname -> $tgtdotname" ;
+      $traces{$thetrace}++ ;
+      if ($traces{$thetrace} < 2) { tracedown ($indent."  ", $tgtname) ; }
+      else
+      {
+        if ($traces{$thetrace} > 4) # should never happen
+        {
+          print STDERR "What the heck? tracedown traces > 4 $thetrace\n" ;
+        }
+      }
+#       {
+# 	$logrecord = "  depth: $nodename -> $tgtname" ;
+# 	if (!defined $logrecords{$logrecord})
+# 	{
+# 	  print LOG "$logrecord\n" ;
+# 	}
+# 	$logrecords{$logrecord}++ ;  # increment in any case, might want it 
+#         $nloops++ ;
+#       }
+    }
+  }
+}
+
+########################################################################
+# create a new node, if it doesn't already exist, in the noderefs      #
+# hash                                                                 #
+########################################################################
+sub createnewnode
+{
+  my ($name) = @_ ;
+  if (!defined $noderefs{$name})
+  {
+    $noderefs{$name} = [[],[]] ;  # intent: a reference to an array 
+				  # containing references to two arrays: 
+				  # the tolist and the fromlist 
+    # Point back to the name from the reference
+    $nameof{$noderefs{$name}} = $name ;
+  }
+  return $noderefs{$name} ;
+}
+
+########################################################################
+# make the links src -> tgt, unless they already exist                 #
+########################################################################
+sub addtargetto # ($srcref, $tgtref)
+{
+  my ($srcref, $tgtref) = @_ ;
+  my ($srctolistref, $tgtfromlistref) ;
+  my ($foundit) ;
+  my ($srcto, $tgtfrom) ;
+  $srctolistref = $srcref->[0] ;
+  $tgtfromlistref = $tgtref->[1] ;
+
+  $foundit = 0 ;
+  foreach $srcto (@$srctolistref)
+  {
+    if ($srcto == $tgtref) { $foundit = 1 ; last ; }
+  }
+  if (!$foundit) { $tocountlinks++ ; push @$srctolistref, $tgtref ; }
+
+  $foundit = 0 ;
+  foreach $tgtfrom (@$tgtfromlistref)
+  {
+    if ($tgtfrom == $srcref) { $foundit = 1 ; last ; }
+  }
+  if (!$foundit) { $fromcountlinks++ ; push @$tgtfromlistref, $srcref ; }
+}
+
+sub readlinks
+{
+  my ($lnkfilename) = @_ ;
+  local (*LNKIN) ;
+  my ($dateline, $datetype, $moddate) ;
+  my ($inline) ;
+  my (@inlines) ;
+  my $debug ;
+
+# $debug = $lnkfilename eq "ttr/SIM/2_PSE_Module/3834.lnks" ;
+  open LNKIN, $lnkfilename 
+      or die "Couldn't read $lnkfilename for reading: $!\n" ;
+  $dateline = <LNKIN> ;
+  chomp $dateline ;
+  ($datetype, $moddate) = split /\t/, $dateline ;
+  while ($inline = <LNKIN>) 
+  { 
+    chomp $inline ; 
+    push @inlines, $inline ; 
+  }
+  return $datetype, $moddate, @inlines ;
+}
+
+# sub getobjtxt
+# {
+#   my ($fname) = @_ ;
+#   my ($objtxt) ;
+#   my (@objtxt) ;
+#   local *OBJTXT ;
+# 
+#   open OBJTXT, "$fname"
+#       or die "Couldn't open objtxt file $fname for reading: $!\n" ;
+#   @objtxt = (<OBJTXT>) ;
+#   print $fname . "\t" . $#objtxt . "\n" if $#objtxt > 0 ;
+#   $objtxt = $objtxt[0] ;
+#   if (!defined $objtxt) { $objtxt = "" ; }
+#   $objtxt =~ s/\\/\\\\/g ;   # backslash-quote any backslashes
+#   close OBJTXT ;
+#   return $objtxt ;  # for now
+# }
+# 
+# sub getshrttxt
+# {
+#   my ($fname) = @_ ;
+#   my ($shrttxt) ;
+#   my (@shrttxt) ;
+#   local *SHRTTXT ;
+# 
+#   open SHRTTXT, "$fname"
+#       or die "Couldn't open shrttxt file $fname for reading: $!\n" ;
+#   @shrttxt = (<SHRTTXT>) ;
+#   print $fname . "\t" . $#shrttxt . "\n" if $#shrttxt > 0 ;
+#   $shrttxt = $shrttxt[0] ;
+#   if (!defined $shrttxt) { $shrttxt = "" ; }
+#   $shrttxt =~ s/\\/\\\\/g ;   # backslash-quote any backslashes
+#   close SHRTTXT ;
+#   return $shrttxt ;  # for now
+# }
+
+sub makenodelabel
+{
+  my ($nodename) = @_ ;
+  my ($nodelabel) ;
+  $nodelabel = $nodename ;
+  $nodelabel =~ s/\/(\d+)$/:$1/ ;
+  $nodelabel =~ s/^.*\/// ;
+  return $nodelabel ;
+}
+
+sub makedotname
+{
+  my ($nodename) = @_ ;
+  my ($dotname) ;
+  $dotname = $nodename ;
+  $dotname =~ s/[\/\-]/_/g ;
+  # a dot name can't start with a number
+  $dotname =~ s/^(\d)/L$1/ ;
+  return $dotname ;
+}

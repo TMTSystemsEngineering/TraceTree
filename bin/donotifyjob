@@ -1,0 +1,5 @@
+#! /usr/bin/bash -l
+
+cd $TT_DATA
+xnotify -f TMT_Requirements > $TT_LOGS/notifyjob_`date +%Y-%m-%dT%H-%M`.log 2>&1 
+ls -l $TT_LOGS/TMT_Requirements.notifications.md5 $TT_LOGS/TMT_Requirements.notification.out

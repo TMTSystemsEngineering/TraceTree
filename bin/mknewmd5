@@ -1,0 +1,89 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+use DB_File ;
+use Digest::MD5 ;
+
+require "fileutils.pl" ;
+require "ttutils.pl" ;
+
+$verbose = 0 ;
+
+$projname = "" ;
+while (@ARGV)
+{
+  $_ = shift ;
+  if (/^-/)   # assume no project starts with '-'
+  {
+    $verbose++  if /^-v/ ;
+  }
+  else { $projname = $_ ; }
+}
+die "Usage:\n  mknewmd5 projectname\n" if $projname eq "" ;
+
+$srcdir = "ttr/$projname" ;
+$md5filename = "LogsAndData/$projname.md5" ;
+print "$0: doing md5s for $srcdir into '$md5filename'\n" ;
+
+die "Something's wrong with $srcdir\n" if ! -e $srcdir or ! -d $srcdir ;
+
+unlink $md5filename ;
+tie %md5s, "DB_File", $md5filename, O_RDWR|O_CREAT, 0666, $DB_HASH 
+    or die "Cannot open db file '$md5filename': $!\n" ;
+
+# Include just the plain files that are source for the trace tree.  Include dots, because other things depend on them.
+print "$0: getting list of source plain files\n" ;
+# @biglist = getfilelistrecursive ($srcdir) ;  # can't we put pat in here?
+# @srclist = grep /\.(css|html|gif|png|dot)$/, @biglist ;
+# undef @biglist ;
+@srclist = getfilelistrecursive ($srcdir) ;  # can't we put pat in here?
+
+$count = 0 ;
+$totalcount = scalar @srclist ;
+foreach $srcfile (@srclist)
+{
+  ######################################################################
+  # Here in mknewmd5, we assume this is the "as-is" version, so it's   #
+  # NOT NEW, i.e. new='0'                                              #
+  ######################################################################
+  $digest = calcmd5digest($srcfile) ;
+  $md5s{$srcfile} = '0,' . $digest ;
+  $count++ ;
+  print STDERR "$digest\t$count/$totalcount\t$srcfile\e[K\r" if $count%100==0;
+}
+print STDERR "done with $count files\n" ;
+untie %md5s ;

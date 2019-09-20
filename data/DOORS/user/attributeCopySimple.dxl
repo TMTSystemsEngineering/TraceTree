@@ -1,0 +1,48 @@
+﻿// Copy 'short text' attribute to 'Object Short Text'
+pragma runLim, 0
+
+
+// we'll hard code these.  Takes some more code to make it a 
+// dialog instead of hard coded.
+string fromattrname = "short text"
+string toattrname = "Object Short Text"
+
+// Operate only on the current module.
+Module mod = current Module
+Object obj
+
+string copystring
+
+if (null mod)
+{
+    ack "No current module"
+    halt
+}
+
+// Function - copy fromattrname to toattrname ONLY IF
+//  1) value(toattrname) is empty
+//  2) value(fromattrname) is not empty
+//  3) value(fromattrname) != value(toattrname)
+// An alternative is to eliminate rule 1 or rule 2 or both
+int countall = 0
+int countchanged = 0
+for obj in entire mod do
+{
+    countall++
+    int absno = obj."Absolute Number"
+
+    string fromtext = obj.fromattrname
+    string totext   = obj.toattrname
+
+    if (totext == "" && fromtext != "" && fromtext != totext)
+    {
+      obj.toattrname = fromtext
+      countchanged++
+    }
+}
+
+string msg = "Of " countall " objects, " countchanged " have been changed"
+ack msg
+
+
+

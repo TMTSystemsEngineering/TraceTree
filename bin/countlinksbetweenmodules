@@ -1,0 +1,365 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+
+require "fileutils.pl" ;
+require "miscutils.pl" ;
+require "ttutils.pl" ;
+require "xmlutils.pl" ;
+
+$dodebug = 0 ;
+
+$cs{"L0_"}   = "#ffffff" ;
+$cs{"L1_"}   = "#ddddff" ;
+$cs{"L1_5_"} = "#ddeeee" ;  # Average them
+$cs{"L2_"}   = "#ddffdd" ;
+$cs{"L3_"}   = "#ffdddd" ;
+$cs{"L3_5_"} = "#ffeeee" ;
+$cs{"L4_"}   = "#ffddff" ;
+$cs{"L5_"}   = "#ddffff" ;
+$cs{"L6_"}   = "#ffffdd" ;
+$cs{"L7_"}   = "#ddddbb" ;
+$cs{"Level_0_"} = "#ffffff" ;
+$cs{"Level_1_"} = "#ddddff" ;
+$cs{"Level_2_"} = "#ddffdd" ;
+$cs{"Level_3_"} = "#ffdddd" ;
+$cs{"Level_4_"} = "#ffddff" ;
+$cs{"Level_5_"} = "#ddffff" ;
+$cs{"Level_6_"} = "#ffffdd" ;
+$cs{"Level_7_"} = "#ddddbb" ;
+
+$exampleinput =<<EOEX;
+/2009-02-26_GRAIL_from_LM/L3_PL	1	ModuleBaseline	2008-12-05 10:40:41
+/2009-02-26_GRAIL_from_LM/L3_PL	2	ModuleBaseline	2008-12-05 10:40:41
+/2009-02-26_GRAIL_from_LM/L3_PL	59	t	/2009-02-26_GRAIL_from_LM/L2_PRD_	161
+/2009-02-26_GRAIL_from_LM/L3_PL	60	t	/2009-02-26_GRAIL_from_LM/L2_PRD_	161
+/2009-02-26_GRAIL_from_LM/L3_LV	4	CreateModDate	2008-03-05 07:34:59
+EOEX
+
+die "Can't tell where I am - \$ENV{\"PWD\"} not defined\n" 
+    if !defined $ENV{"PWD"} ;
+$startdirname = $cwd = $ENV{"PWD"} ;
+
+$rootdirname = "ttr" ;
+if (@ARGV) { $pname = $ARGV[0] ; $rootdirname = "$rootdirname/$pname" ; }
+else { die "Usage:\n  $0 projectname\n" ; }
+print "$0: doing $rootdirname\n" ;
+
+$linkfile = "$rootdirname/alllinks.txt" ;
+
+open LINKS, $linkfile or die "Couldn't open $linkfile for reading: $!\n" ;
+@linklines = (<LINKS>) ;
+chomp @linklines ; 
+close LINKS ;
+
+foreach $linkline (@linklines)
+{
+  ######################################################################
+  # there are three kinds of link lines, as seen in example.  We       #
+  # don't care bout ModuleBaseline vs CreateModDate, so really just    #
+  # two.  If it's a link, we store that link info.  If it's an         #
+  # object, we look at the module and object number.                   #
+  ######################################################################
+
+  if ($linkline =~ /(ModuleBaseline|CreateModDate)/)
+  {
+    ($mod, $objnum, @rest) = split (/\t/, $linkline) ;
+    $mod =~ s/^\/$pname\/// ;   # eliminate the common project name
+print "links: mod $mod before = '$mod'\n" if $dodebug; 
+    $mod =~ s/^Requirements\/// ;   # eliminate possible top level 
+                                    # 'Requirements' folder
+print "       mod $mod after  = '$mod'\n"  if $dodebug; 
+    $objcount{$mod}++ ;
+  }
+  else
+  {
+    ($mods, $objs, $t, $modt, $objt) = split (/\t/, $linkline) ;
+    die "UH OH a supposed link line doesn't have a 't' in its middle:\n" 
+        . "'$linkline'\n" unless $t eq 't' ;;
+print "links: mods before = '$mods'\n"  if $dodebug; 
+print "links: modt before = '$modt'\n"  if $dodebug; 
+    $mods =~ s/^\/$pname\/// ;   # eliminate the common project name
+    $modt =~ s/^\/$pname\/// ;   # eliminate the common project name
+    $mods =~ s/^Requirements\/// ;   # eliminate possible top level 
+                                     # 'Requirements' folder
+    $modt =~ s/^Requirements\/// ;   # eliminate possible top level 
+                                     # 'Requirements' folder
+print "       mods after  = '$mods'\n"  if $dodebug; 
+print "       modt after  = '$modt'\n"  if $dodebug; 
+    
+    # We'll do this kind of dumb.  Combine the target and source modules into a single tab-separated string, and bump the count for that combo.
+    $modts = "$modt\t$mods" ;
+    $linkcountof{$modts}++ ;
+  }
+}
+
+$dotfile1 = "$pname.links1.dot" ;
+$dotfile2 = "$pname.links2.dot" ;
+$dotfile3 = "$pname.links3.dot" ;
+$linktsvfile = "$pname.links.tsv" ;
+
+open DOT1, "> $dotfile1" 
+    or die "Couldn't open $dotfile1 for writing: $!\n" ;
+print "Opened $dotfile1\n" ;
+print DOT1 "digraph linkcounts {\n  rankdir=LR\n" ;
+open DOT2, "> $dotfile2"
+    or die "Couldn't open $dotfile2 for writing: $!\n" ;
+print "Opened $dotfile2\n" ;
+print DOT2 "digraph linkcounts {\n  rankdir=LR\n" ;
+open DOT3, "> $dotfile3"
+    or die "Couldn't open $dotfile3 for writing: $!\n" ;
+print "Opened $dotfile3\n" ;
+print DOT3 "digraph linkcounts {\n  rankdir=LR\n" ;
+
+open TSV, "> $linktsvfile" 
+    or die "Couldn't open $linktsvfile for writing: $!\n" ;
+print "Opened $linktsvfile\n" ;
+chomp ($date = `date`) ;
+print TSV "Links for project $pname as of $date\n" ;
+print TSV "Link direction is in flowdown sense, opposite of DOORS\n" ;
+print TSV "From\tTo\tcount\n" ;
+
+foreach $modts (sort keys %linkcountof)
+{
+  ($modt, $mods) = split /\t/, $modts ;
+  $lcount = $linkcountof{$modts} ;
+  
+  
+  # we'll reverse these to reflect flowdown rather than DOORS
+  $graphnodenames = makegraphnodename ($mods) ;
+  $graphnodenamet = makegraphnodename ($modt) ;
+print "Linking $graphnodenamet -> $graphnodenames [label=\"$lcount\", weight=$lcount];\n"  if $dodebug;
+  print TSV "$modt\t$mods\t$lcount\n" ;
+  # WE'RE GETTING RID OF CHECKS FOR 'L1' or 'L2' etc., because TMT doesn't have them
+  # CHART 1
+  if (  ($modt =~ /^Level_[0-9]_/ and $mods =~ /^Level_[0-9]_/)
+     and !($modt =~ /Level_0.*DSC/ ) )
+  {
+    push @linklines1,
+        "$graphnodenamet -> $graphnodenames [label=\"$lcount\", weight=$lcount];\n" ;
+    $modsingraph1{$mods}++ ;
+    $modsingraph1{$modt}++ ;
+  }
+  # CHART 2 - start at L1 OAD, and add ICDs.  Only look at ICDs as 
+  # source (i.e. receiving an arrow)
+  if (   ($modt =~ /^Level_[2-9]_/ and $mods =~ /^Level_[2-9]_/)
+      or ($modt =~ /^Level_1.*OAD/))
+  {
+    push @linklines2, 
+        "$graphnodenamet -> $graphnodenames [label=\"$lcount\", weight=$lcount];\n" ;
+    $modsingraph2{$mods}++ ;
+    $modsingraph2{$modt}++ ;
+  }
+  # Put in an ICD, but only if the target (looking up) is Level 2 or lower
+  if ($mods =~ /ICD/ and $modt =~ /^Level_[2-9]/)
+  {
+    push @linklines2, 
+        "$graphnodenamet -> $graphnodenames [label=\"$lcount\", weight=$lcount];\n" ;
+    $modsingraph2{$mods}++ ;
+    $modsingraph2{$modt}++ ;
+  }
+  # CHART 3 - start at L1 OAD, and add VAMs.  Only look at VAMs as 
+  # source (i.e. receiving an arrow)
+  if (   ($modt =~ /^Level_[2-9]_/ and $mods =~ /^Level_[2-9]_/)
+      or ($modt =~ /^Level_1.*OAD/))
+  {
+    push @linklines3, 
+        "$graphnodenamet -> $graphnodenames [label=\"$lcount\", weight=$lcount];\n" ;
+    $modsingraph3{$mods}++ ;
+    $modsingraph3{$modt}++ ;
+  }
+  # Put in a VAM, but only if the target (looking up) is Level 2 or lower
+  if ($mods =~ /VAM/ and $modt =~ /^Level_[2-9]/)
+  {
+    push @linklines3, 
+        "$graphnodenamet -> $graphnodenames [label=\"$lcount\", weight=$lcount];\n" ;
+    $modsingraph3{$mods}++ ;
+    $modsingraph3{$modt}++ ;
+  }
+}
+# Now we want to create subgraphs of anything beginning with "L\d" .  
+# Tough if they're in a sub-folder - wont' see it.'
+
+print "STARTING SUBGRAPHS FOR 1\n" ;
+@l = sort keys %modsingraph1 ;
+# DO THIS BY FILTER rather than counting on sort order.
+# First find all the levels
+foreach $mod (sort keys %modsingraph1)
+{
+  $level = levelOfMod ($mod) ;
+  $levels{$level}++ ;
+}
+
+# Now for each level
+foreach $thelevel (sort keys %levels)
+{
+  print DOT1 "subgraph { rank=\"same\";\n" ;
+  foreach $mod (sort keys %modsingraph1)
+  {
+    $level = levelOfMod ($mod) ;
+    next if $level ne $thelevel ;
+    $cs = $cs{$level} ;
+    $graphnodename = makegraphnodename($mod) ;
+    $label = makegraphnodelabel($mod) ;
+    print DOT1 "  $graphnodename [label=\"$label\", style=filled, fillcolor=\"$cs\"];\n" ;
+  }
+  print DOT1 "}\n" ;
+}
+
+print "STARTING SUBGRAPHS FOR 2\n" ;
+@l = sort keys %modsingraph2 ;
+# DO THIS BY FILTER rather than counting on sort order.
+# First find all the levels
+foreach $mod (sort keys %modsingraph2)
+{
+  $level = levelOfMod ($mod) ;
+  $level = 'L9_' if $mod =~ /ICD/ ;
+  $levels{$level}++ ;
+}
+
+# Now for each level
+foreach $thelevel (sort keys %levels)
+{
+  print DOT2 "subgraph { rank=\"same\";\n" ;
+  foreach $mod (sort keys %modsingraph2)
+  {
+    $level = levelOfMod ($mod) ;
+    $level = 'L9_' if $mod =~ /ICD/ ;
+    next if $level ne $thelevel ;
+    $cs = $cs{$level} ;
+    $graphnodename = makegraphnodename($mod) ;
+    $label = makegraphnodelabel($mod) ;
+    print DOT2 "  $graphnodename [label=\"$label\", style=filled, fillcolor=\"$cs\"];\n" ;
+  }
+  print DOT2 "}\n" ;
+}
+
+print "STARTING SUBGRAPHS FOR 3\n" ;
+@l = sort keys %modsingraph3 ;
+# DO THIS BY FILTER rather than counting on sort order.
+# First find all the levels
+foreach $mod (sort keys %modsingraph3)
+{
+  $level = levelOfMod ($mod) ;
+  $level = 'L9_' if $mod =~ /VAM/ ;
+  $levels{$level}++ ;
+}
+
+# Now for each level
+foreach $thelevel (sort keys %levels)
+{
+  print DOT3 "subgraph { rank=\"same\";\n" ;
+  foreach $mod (sort keys %modsingraph3)
+  {
+    $level = levelOfMod ($mod) ;
+    $level = 'L9_' if $mod =~ /VAM/ ;
+    next if $level ne $thelevel ;
+    $cs = $cs{$level} ;
+    $graphnodename = makegraphnodename($mod) ;
+    $label = makegraphnodelabel($mod) ;
+    print DOT3 "  $graphnodename [label=\"$label\", style=filled, fillcolor=\"$cs\"];\n" ;
+  }
+  print DOT3 "}\n" ;
+}
+
+#################################################################
+# FOLLOWING IS OBSOLETE BUT WORTH SAVING.  Or at least it's not # 
+# wanted currently.                                             #
+#################################################################
+# Now, just for DOT1, we add in modules from %objcount
+# foreach $mod (sort keys %objcount)
+# {
+#   next if exists ($modsingraph{$mod}) ;
+#   next if ($mod !~ /^L[0-9]_/) and ($mod !~ /^Level_[0-9]_/) ;
+#   $mod =~ s/\//__/g ;
+#   $mod =~ s/-/_/g ;
+#   # if this module doesn't already exists in the graph, or if it does, 
+#   # but was rejected for not beginning with L\d_, add it now 
+#   $graphnodename = $mod ;
+#   $graphnodename =~ s/\//__/g ;  # slashes to '__' 
+#   $grahpnodename =~ s/-/_/g ;    # dashes to '_' 
+#   $label = makegraphnodelabel($mod) ;
+#   print DOT1 "  $graphnodename [label=\"$label\", style=filled, fillcolor=\"lightgray\"];\n" ;
+# }
+
+# we'd like to do this:
+# print DOT1 @linklines1 ;
+# But we're having trouble with an abort in dot.  Empirically it looks 
+# like one of Ln_VAL or z_obsolete are messed up, but why? 
+# GO BACK TO IDEAL, tere are no Ln_VAL and z_obsolete in TMT
+print DOT1 @linklines1 ;
+print DOT2 @linklines2 ;
+print DOT3 @linklines3 ;
+print DOT1 "}\n" ;
+print DOT2 "}\n" ;
+print DOT3 "}\n" ;
+close DOT1 ;
+close DOT2 ;
+close DOT3 ;
+close TSV ;
+
+sub makegraphnodename
+{
+  my ($modname) = @_ ;
+  my $gname = $modname ;
+  $gname =~ s/\//___/g ; # slashes to '___' ;
+  $gname =~ s/-/_/g ;    # dashes to '_' ;
+  return $gname ;
+}
+
+sub makegraphnodelabel
+{
+  my ($modname) = @_ ;
+  my $label = $modname ;
+  $label =~ s/___/ - / ;  # make ___ ' - ' because that's what it likely 
+                          # was in the first place.  
+  $label =~ s/_/ /g ;    # for the label, underscores to blanks; it's 
+                         # probably what they were in the first place 
+  return $label ;
+}
+
+sub levelOfMod # ($modname)
+{
+  my ($modname) = @_ ;
+  my $level = 'xx' ;
+  $modname =~ /^(Level_[0-9]_)/ ;
+  $level = $1 ;
+  $level =~ s/evel_// ;
+  # Special purpose for TMT
+  $level = 'L1_5_' if $mod eq 'Level_1_Requirements/OAD' ;
+  return $level ;
+}

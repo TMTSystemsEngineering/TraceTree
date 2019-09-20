@@ -1,0 +1,155 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+require "fileutils.pl" ;
+require "ttutils.pl" ;
+
+use DB_File ;
+
+$rootpathname = "/Users/jgrimes/Desktop/VPCShare" ;
+$rootdirname = "ttr" ;
+$newrootdirname = "ttrnew" ;
+if (@ARGV) { $pname = $ARGV[0] ; }
+else { die "Usage:\n  xxfernewtocurrent projectname\n" ; }
+$rootdirname .= "/$pname" ;
+$newrootdirname .= "/$pname" ;
+print "xxfernewtocurrent: doing $newrootdirname -> $rootdirname\n" ;
+
+die "Couldn't find directory $newrootdirname\n" if ! -e $newrootdirname ;
+die "Couldn't find directory $rootdirname\n"    if ! -e $rootdirname ;
+
+$md5name = "LogsAndData/$pname.md5" ;
+print "$0: using $md5name\n" ;
+tie %dotsums, "DB_File", $md5name, O_RDWR, 0666, $DB_HASH
+    or die "Couldn't open '$md5name': $!\n" ;
+
+@newdirlist = getdirlistrecursivesimple ($newrootdirname) ;
+@dirlist = getdirlistrecursivesimple ($rootdirname) ;
+
+########################################################################
+# First rename current sequence.txt files.  We assume that new         #
+# sequence.txt files will replace them if the modules still exists.    #
+# This serves to elimnate no longer existing modules because           #
+# xrmnafiles will detect modules with no sequence.txt files.  We will  #
+# use the old sequence.txt files to detect objects that haven't        #
+# change but have been moved within the module.                        #
+########################################################################
+foreach $dirname (@dirlist)
+{
+  $seqfilename = "$dirname/sequence.txt" ;
+  $oldseqfilename = "$seqfilename.old" ;
+  unlink $oldseqfilename ;   # no report needed here.
+  rename $seqfilename, $oldseqfilename ;
+  #  don't really care about this warning:
+  #    or warn "Couldn't rename $seqfilename to $oldseqfilename: $!\n";
+}
+########################################################################
+# Now make sure there's a receiving directory for any directory found  #
+# under newrootdirname.                                                #
+########################################################################
+foreach $newdirname (@newdirlist)
+{
+  ($dirname = $newdirname) =~ s/$newrootdirname/$rootdirname/ ;
+  if (! -d $dirname)
+  {
+    print "making $dirname\n" ;
+    mkdir $dirname or die "Couldn't mkdir $dirname: $!\n" ;
+  }
+}
+########################################################################
+# Now copy all plain files from the newdirs to the current dirs. Add   #
+# top of new path the the new dir name to make sure we get generated   #
+# files at top                                                         #
+########################################################################
+push @newdirlist, $newrootdirname ;
+$movecount = 0 ;
+foreach $newdirname (@newdirlist)
+{
+  ($dirname = $newdirname) =~ s/$newrootdirname/$rootdirname/ ;
+  @newlist = getfilelist ($newdirname) ;
+
+  foreach $newfilename (@newlist)
+  {
+    $newfilename = "$newdirname/$newfilename" ;
+    next unless -f $newfilename ;
+    ($filename = $newfilename) =~ s/$newrootdirname/$rootdirname/ ;
+    # filename should contain the that is in md5 checksums
+
+    ####################################################################
+    # we really don't care about the "is new flag that might be in     #
+    # there already.  Just want to set the new one if it's not the     #
+    # same. if the old one doesn't exist or if it has changed, flag    #
+    # it and record the new sum                                        #
+    ####################################################################
+    $newdigest = calcmd5digest($newfilename) ;
+    if (exists $dotsums{$filename})
+    {
+      ($oldisnew, $olddotsum) = getmd5isnewanddigest($dotsums{$filename}) ;
+      # if it exists already, check to see if it's actually changed
+      if ($olddotsum ne $newdigest)
+      {
+	$dotsums{$filename} = '1,' . $newdigest ;
+      }
+    }
+    else
+    {
+      $dotsums{$filename} = '1,' . $newdigest ;
+    }
+
+    # print "Moving $newfilename to $filename\n" ;
+    deleteandmovefile ($newfilename, $filename) ;
+    $movecount++ ;
+    print STDERR "moved $movecount files\r" if $movecount%1000 == 0 ;
+  }
+}
+print "moved $movecount files\n" ;
+untie %dotsums ;
+
+# ASSUMES same file system so move will work
+# deletes tofilename first, if it exists
+sub deleteandmovefile # (newfilename, tofilename)
+{
+  my ($newfilename, $tofilename) = @_ ;
+
+  # do we need to delete old tofilename?
+  if ( -e $tofilename)
+  {
+    unlink $tofilename or die "Couldn't unlink $tofilename: $!\n" ;
+  }
+  rename $newfilename, $tofilename or die "Couldn't rename (move) $newfilename to $tofilename: $!\n" ;
+}
+

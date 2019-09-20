@@ -1,0 +1,289 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+  <head><title>DOORS Trace Trees
+</title>
+  <link rel="shortcut icon" href="favicon.ico">
+    <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+    <link href="tracetreestyles.css" rel="stylesheet" type="text/css">
+  </head>
+  <body>
+    <h2>DOORS Trace Trees</h2>
+    <p>"Specials" now available from project index pages</p>
+    <table border=1>
+      <tr><th>Project</th><th>Access contact*</th></tr>
+      <tr>
+	<td><a href="APX/index.html">APX</a></td>
+	<td><a href="mailto:Charles.E.Holler@jpl.nasa.gov">Charles Holler</a></td>
+      </tr>
+      <tr>
+	<td><a href="CAL/index.html">CAL</a></td>
+	<td><a href="mailto:Michael.T.Kline@jpl.nasa.gov">Michael Kline</a></td>
+      </tr>
+      <!-- tr>
+	<td><a href="DSN/index.html">DSN</a></td>
+	<td><a href="mailto:Alina.Bedrossian@jpl.nasa.gov">Alina Bedrossian</a></td>
+      </tr -->
+      <tr>
+	<td><a href="GRACE-FO/index.html">GRACE-FO</a></td>
+	<td><a href="mailto:Neil.T.Dahya@jpl.nasa.gov">Neil Dahya</a></td>
+      </tr>
+      <tr>
+	<td><a href="GRAIL/index.html">GRAIL</a></td>
+	<td><a href="mailto:Kevin.J.Barltrop@jpl.nasa.gov">Kevin Barltrop</a></td>
+      </tr>
+      <tr>
+	<td><a href="InSight/index.html">InSight</a></td>
+	<td>&nbsp;</td>
+      </tr>
+      <tr>
+	<td><a href="LDSD/index.html">LDSD</a></td>
+	<td><a href="mailto:Thomas.M.Randolph@jpl.nasa.gov">Thomas Randolph</a></td>
+      </tr>
+      <tr>
+      <tr>
+	<td><a href="MSL/index.html">MSL</a></td>
+	<td><a href="mailto:Tracy.J.VanHouten@jpl.nasa.gov">Tracy Van Houten<br><a href="mailto:Grace.H.Tan-Wang@jpl.nasa.gov">Grace Tan-Wang</a></td>
+      </tr>
+      <tr>
+	<td><a href="MSL_2_0/index.html">MSL 2.0</a></td>
+	<td><a href="mailto:Tracy.J.VanHouten@jpl.nasa.gov">Tracy Van Houten<br><a href="mailto:Grace.H.Tan-Wang@jpl.nasa.gov">Grace Tan-Wang</a></td>
+      </tr>
+      <tr>
+	<td><a href="MSM/index.html">MSM</a></td>
+	<td>&nbsp;</td>
+      </tr>
+      <tr>
+	<td><a href="OCO-2/index.html">OCO-2</a></td>
+	<td><a href="mailto:Pavani.Peddada@jpl.nasa.gov">Pavani Peddada</a></td>
+      </tr>
+      <tr>
+	<td><a href="ASTRA/index.html">Phaeton ASTRA</a></td>
+	<td><a href="mailto:Ross.M.Jones@jpl.nasa.gov">Ross Jones</a></td>
+      </tr>
+      <tr>
+	<td><a href="CHARM/index.html">Phaeton CHARM</a></td>
+	<td><a href="mailto:Alexander.C.Kadesch@jpl.nasa.gov">Alex Kadesch</a></td>
+      </tr>
+      <tr>
+	<td><a href="Phaeton/index.html">Phaeton OPALS</a></td>
+	<td><a href="mailto:Bogdan.Oaida@jpl.nasa.gov">Bogdan Oaida</a></td>
+      </tr>
+      <tr>
+	<td><a href="SMAP/index.html">SMAP</a></td>
+	<td><a href="mailto:Sandra.G.Fettes@jpl.nasa.gov">Sandra Fettes</a></td>
+      </tr>
+      <tr>
+	<td><a href="TGO/index.html">TGO</a></td>
+	<td><a href="mailto:james.m.grimes@jpl.nasa.gov">J Grimes (placeholder)</a></td>
+      </tr>
+      <tr>
+	<td><a href="TMT_Requirements/index.html">TMT</a></td>
+	<td><a href="mailto:Frank.G.Dekens@jpl.nasa.gov">Frank Dekens</a></td>
+      </tr>
+    </table>
+    <p>
+      The trace trees are accessible only to JPLers or people with JPL 
+      logins who have been added to a project-specific list.<br>
+      *If the above contacts are inaccurate or unresponsive, please email me at 
+      <a href="mailto:james.m.grimes@jpl.nasa.gov">james.m.grimes@jpl.nasa.gov"</a> 
+      to be added to the appropriate list.
+    </p>
+
+    <h2 align="center">DOORS Trace Tree Explanation</h2>
+<h3>Contents</h3>
+<ul>
+  <li><a href="#Purpose">Purpose</a></li>
+  <li><a href="#Caveat">Caveat</a></li>
+  <li><a href="#How">Generation and Updates</a></li>
+  <li><a href="#Whatis">What is a Requirement?</a></li>
+  <li><a href="#Three">Three Types of Pages</a></li>
+  <li><a href="#ModificationDates">On  Modification Dates</a></li>
+  <li><a href="#TextAttrCaveat">Presentation of Text and Attributes, and a Caveat</a></li>
+  <li><a href="#Bugs">A Bug or Two</a></li>
+</ul>
+
+<h3><a name="Purpose">Purpose</a></h3>
+
+<p>
+This website is intended to provide a quick, 
+graphical way of navigating among all of the requirements 
+recorded in DOORS for a project.  The DOORS client itself, while 
+powerful, is limited in its support for understanding and tracing the 
+requirements flow along the links recorded in the database.  It is also 
+sometimes very slow, operationally, to show or trace linked requirements.
+</p>
+<p>
+The Trace Tree provides the ability to trace up and down the links from 
+any given requirement in the database.  The requirements linked upward 
+and downward are traced as far as possible from each given requirement, 
+and displayed graphically.  Each requirement in a project has its own web 
+page in the Trace Tree.  
+Requirements in a graph are shown as rectangular blocks in the graph, 
+with various colors coding information about the requirements.  Aside 
+from the subject requirement (depicted in yellow), each requirement 
+block is clickable, allowing easy navigation from the subject's page to 
+the page of any other requirement on the graph. The blocks are generally 
+arranged from left to right, with the left-most blocks representing the 
+highest-level requirements.
+</p>
+
+<h3><a name="Caveat">Caveat</a></h3>
+<p>
+  <i>These pages must not be used as definitive!</i> They are meant 
+  solely as an aide, or tool, in dealing with the requirements.  Only 
+  the DOORS database itself is completely up-to-date and contains all 
+  information related to requirements and the flowdown.  Please see 
+  further <a href="#caveat">explanation below</a> for information on 
+  what is and is not included in these pages.
+</p>
+
+<h3><a name="How">Generation and Updates</a></h3>
+The Trace Tree website is first generated by dumping the all of the data from 
+a given project into a separate database, then building the website 
+from that. Updates thereafter are incremental, with only those objects that have changed
+being dumped to the database and subsequently written to the website.  Any change 
+to any attribute or object text or links will cause the pages for that object to be updated.  
+(This is a change as of September 2013; previously, only a change to an attribute that was 
+set to affect the object's "Last Modified On" parameter would cause an object to be updated.)
+</p>
+<p>
+A consequence of this is that a module or entire project that is not getting any changes will not
+be updated at all, and it may appear that the Trace Tree reports are not being run.
+</p>
+<p>
+Updates are routinely made once per day, in the early morning around 4:00 AM, and completing in an hour or so.  
+Therefore, edits made to the DOORS project during the day will appear in the Trace Tree the next day.
+</p>
+
+
+<h3><a name="Whatis">What is a Requirement?</a></h3>
+<p>
+  Formerly, the trace trees eliminated certain types of objects such as 
+  table cells, or text with no "shall" in them.  Now, however, almost 
+  every object in a DOORS module is included.  Only deleted requirements 
+  are excluded; this is true even if the DOORS default view shows deleted 
+  requirements.
+</p>
+
+
+<h3><a name="Three">Three Types of Pages</a></h3>
+<p>
+  There are two levels of index for each project, and then a web page for 
+  each DOORS object, or requirement.<br>
+  <img src="explanationFigure1.png"><br>
+  The home page of a project's site lists each module and 
+  its description.  Each module listed is hyperlinked to its own module index, 
+  which shows a view of the module similar to a "book" view as produced by DOORS.  
+  In this view, the object ID of each requirement is clickable and is linked its own web page.
+</p>
+<p>In the individual module view, it is possible to 
+  add attributes in columns to the right of the requirement text, but 
+  this must be set up in advance and is not changeable from the web 
+  page.  Please <a href="mailto:james.m.grimes@jpl.nasa.gov">e-mail 
+  me</a> to make this happen.
+</p>
+<p>
+Each individual requirement page shows:<br>
+<ul>
+  <li>the graphical tree of objects linked to the subject requirement;</li>
+  <li>information about the date and time that the page was generated;</li>
+  <li>the modification date of the subject requirement;</li>
+  <li>a link directly into DOORS (if you are running the web browswer on 
+      a machine with an installed DOORS client);</li>
+  <li>Object Heading, if any</li>
+  <li>Object Short Text, if any</li>
+  <li>the Object Text (the requirement text itself), if any, with the 
+      pictures, excel tables, and other OLE objects; and</li>
+  <li><u>most</u> of the attributes, but without graphics and such.</li>
+</ul>
+</p>
+<a name="caveat">
+<h3><a name="ModificationDates">On  Modification Dates</a></h3>
+<p>
+  Requirement modification date and times are used both textually and 
+  graphically to illustrate the timeliness of flowdown.  Ideally, a 
+  requirement change starts at a high level and is followed in time by a 
+  response at each lower level.  For example, one would expect that a 
+  change in the Project System Requirement Document (usually Level 2) would be 
+  followed at a future date by changes in at Level 3 (e.g. the Flight System), then 
+  the Level 4, and so on.  Of course there are many 
+  reasons why this ideal situation may not hold.  The purpose is to flag 
+  violations in the rule without making judgements as to whether there 
+  is a valid reason for it.
+</p>
+<p>
+  The graphical presentation of such violations is a red or pink box 
+  color for the traced requirement.  A red or pink box indicates that 
+  the requirement's modification date is either later than the subject's 
+  date for an "upstream" requirement, or earlier for a downstream 
+  requirement.  The comparison is <u>always</u> done with respect to the 
+  subject (yellow) requirement's date, not with any requirements which 
+  might be between them in the flowdown. <br>
+  <img src="explanationFigure2.png">
+  </p>
+  <p>Modfication Date/Time is 
+  complicated by how DOORS stores this information.  For each object, 
+  the "Object Text" attribute's most recent modification date/time is 
+  used preferentially (other attributes' history is ignored).  If never 
+  modified, the object's creation date is used.  However, if the object 
+  was created or modified <i>previous to the most recent baseline of the 
+  module</i>, then the module baseline date is used instead.  This is 
+  because DOORS does not keep history from previous baselines of a 
+  module.  (To obtain previous history, every baseline of every module 
+  would have to be kept open, a prohibitive operation.) </p> <p>
+  Requirements for which the modification date is actually the module 
+  baseline date are shown in pink rather than red if the date violates 
+  flowdown.  If the subject requirement's modfication date is actually 
+  its module's baseline date, its yellow box is outlined in red.
+</p>
+<h3><a name="TextAttrCaveat">Presentation of Text and Attributes, and a Caveat</a></h3>
+<p>
+  On both the module pages and on the object pages, some modification of 
+  the text has necessarily taken place in order to preserve some 
+  formatting under HTML rules.  This includes:
+</p>
+<ol type="1">
+  <li>Line breaks have been preserved.</li>
+  <li>Use of tabs anywhere in the text except as an initial indent 
+      <i>used to cause</i> an HTML table to be built on the assumption 
+      that the tabs were used to align columns of text.  <i>This is 
+      currently no longer true</i>, so tab-character-generated tables 
+      may be rather compressed and their columns no longer 
+      straight.</li>
+  <li>OLE Objects, such as Excel tables and pictures, are now included 
+      in the Requirement Text (Object Text), though not in attributes or 
+      Object Headings. Please <a 
+      href="mailto:james.m.grimes@jpl.nasa.gov">e-mail me</a> if you 
+      detect any problems with the translation.</li>
+  <li>Rich Text, including colors, bold, italics, underlines, 
+      superscripts, subscripts, and greek characters, is now included, 
+      though not in attributes or Object Headings. Again, lease <a 
+      href="mailto:james.m.grimes@jpl.nasa.gov">e-mail me</a> if you 
+      detect any problems with the translation.</li>
+</ol>
+<p>
+  The upshot of this reformatting is that <i>these pages must not be 
+  used as definitive!</i> They are meant solely as an aide, or tool, in 
+  dealing with the requirements.
+</p>
+<h3><a name="Bugs">Two Known Bugs</a></h3>
+<p>Two known bugs exist.  Of course there may be others.<br>
+<ol type="1">
+  <li>Some trace trees are enormous, with hundreds of objects and links depicted.  
+Occasionally they are so large that the graphic engine takes it upon itself
+to scale the image down.  However, it doesn't scale the image map, and so the
+graphic is not properly clickable (not to mention difficult to read).  In these 
+cases, the graphic is simply omitted, but there is no mention of why.</li>
+<li>DOORS does not always use conventional encodings of characters.  Every effort 
+made to handle these properly, but occasionally a particular case has been missed.
+Please <a href="mailto:james.m.grimes@jpl.nasa.gov">
+e-mail me</a> if you find any of these.
+</li>
+</ol>
+</p>
+
+</body>
+</html>
+
+
+

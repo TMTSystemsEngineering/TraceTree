@@ -1,0 +1,4 @@
+#! /usr/bin/perl
+
+print "THIS GOES TO STDOUT\n" ;
+print STDERR "THIS GOES TO STDERR\n" ;

@@ -1,0 +1,234 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+use DB_File ;
+use Digest::MD5 ;
+
+require "fileutils.pl" ;
+require "ttutils.pl" ;
+
+# doing via rsync all we need is the address to send them to.
+# example rsync
+# rsync -v --files-from=zxcvzxcv testdir jgrimes@sscae-srv2:trace/testdir
+
+$srctop = "ttr" ;
+$desttop="jgrimes\@sscae-srv2:trace" ;
+# $desttop="../website" ;
+
+# we will be wanting to go from files named 
+#       ttr/projname/x
+# to
+#       $desttop/projname/x
+#
+# md5 name extracted will be 
+#       ttr/projname/x
+# So we'll want to put "x" in the files-from file and make the command 
+# line
+#    rsync -v --files-from=zxcvzxcv ttr/projname $desttop/projname
+
+$listonly = 0 ;
+$verbose = 0 ;
+
+$projname = "" ;
+while (@ARGV)
+{
+  $_ = shift ;
+  if (/^-/)   # assume no project starts with '-'
+  {
+    $donew++    if /^-n/ ;
+    $verbose++  if /^-v/ ;
+    $listonly++ if /^-l/ ;
+  }
+  else { $projname = $_ ; }
+}
+$verbose = 0 if $listonly ;  # $listonly overrides - slightly different 
+                             # verbosity 
+die "Usage:\n  $0 projectname\n" if $projname eq "" ;
+########################################################################
+# SPECIAL PROBLEMS HERE TO FIX IN A BIT                                #
+########################################################################
+# die "UH OH  - wait a bit for OCO\n" if $projname eq "OCO-2" ;
+
+print "SENDING TO '$desttop'\n" ;
+# Set the destination for exceptions
+if ($projname eq 'TMT_Requirements' or $projname eq 'Sandbox')
+{
+  # $desttop="jgrimes\@trace-tree.tmt.org:/data1/trace" ;
+  $desttop="/data/trace" ;
+}
+
+$srcdir = "ttr/$projname" ;
+$destdir = "$desttop/$projname" ;
+# $destdir = "$desttop/OCO/OCO-2" if $projname eq "OCO-2" ;
+
+print "$0: doing $srcdir\n                   to $destdir\n" ;
+
+die "Something's wrong with $srcdir\n" if ! -e $srcdir or ! -d $srcdir ;
+
+$md5name = "LogsAndData/$projname.md5" ;
+die "xxxinstallrsync: $md5name doesn't exist, bye\n" if ! -e $md5name ;
+print "Gonna use this file to determine install:\n" ;
+system "ls -l $md5name" ;
+
+tie %md5s, "DB_File", $md5name, O_RDWR, 0666, $DB_HASH
+    or die "Couldn't open '$md5name': $!\n" ;
+$nkeys = scalar (keys %md5s) ;
+
+########################################################################
+# the plain files are listed in %md5s, but we should check to be sure  #
+# they are of the right type.                                          #
+########################################################################
+
+########################################################################
+# At top level of project (or in future, in "special" directory at     #
+# top level, are some htmls and gifs that might not be in the md5s     #
+# directory, if they're brand new.  They need to be checked in any     #
+# case, because the scripts generating them don't always open the      #
+# md5s database (which could be costly for a large project).           #
+########################################################################
+@specials = getfilelist ($srcdir, '(gif|html|csv)$') ;
+foreach $fname (@specials)
+{
+  $srcpath = "$srcdir/$fname" ;
+  $thisdigest = calcmd5digest($srcpath) ;
+print STDERR "\nTESTING $srcpath digest=$thisdigest\n" ;
+  ######################################################################
+  # if it doesn't exist in db or has changed, set it new and record    #
+  # in md5s db.  If it hasn't changed, ignore it.                      #
+  ######################################################################
+  if (!exists $md5s{$srcpath} 
+         or getmd5digest($md5s{$srcpath}) ne $thisdigest)
+  {
+    $md5s{$srcpath} = '1,' . $thisdigest ;
+    # print STDERR "\n       $srcpath needs updating\n" ;
+print STDERR "Setting it new\n" ;
+  }
+}
+
+########################################################################
+# First let's get a count of those that need to be uploaded.  Record   #
+# the list at the same time.                                           #
+########################################################################
+$count = 0 ; $candidatecount = 0 ; 
+$dontcount = 0 ; $docount = 0 ;
+@listtoupdate=() ;
+foreach $srcpath (keys %md5s)
+{
+  $count++ ;
+  next unless $srcpath =~ /\.(csv|css|html|gif|png)$/;
+  $candidatecount++ ;
+  $flagmd5 = $md5s{$srcpath} ;
+  ($isnew, $md5digest) = getmd5isnewanddigest($flagmd5) ;
+  if ($isnew or $donew) 
+  {
+    $docount++ ;
+    ($relpathtorsync = $srcpath) =~ s/^$srcdir\/// ;
+    push @listtoupdate, $relpathtorsync ;
+  }
+  else { $dontcount++ ; }
+  print STDERR "$count / $nkeys files examined, $candidatecount were website files, $docount will need copying, $dontcount won't\r" if ($count%100) == 0 ;
+}
+$needcopying = $docount ;
+print STDERR "\n$needcopying will need copying\n" ;
+
+$updatefilelistname = "LogsAndData/$projname.toupdate" ;
+open UPDATE, "> $updatefilelistname"
+    or die "Couldn't open $updatefilelistname for writing: $!\n" ;
+print UPDATE join ("\n", @listtoupdate) . "\n" ;
+close UPDATE ;
+
+unless ($listonly)
+{
+  $logfilename = "LogsAndData/$projname.rsynclog" ;
+  $cmd = "rsync -v --files-from=$updatefilelistname $srcdir $destdir > $logfilename" ;
+  # If it's new, you want to delete anything that no longer exists.  
+  # Before, this went to a "new" subfolder as a staging area, but if we're 
+  # not doing that, it's necessary to delete unwanted stuff.
+  if ($donew)
+  {
+    $cmd =~ s/-v/-v --delete/ ;
+  }
+  print "doing '$cmd'\n" ;
+  $result = system "$cmd" ;
+  if ($result)
+  {
+    printf STDERR "$0: caught error: %0x\n", $result ;
+    $! = $result >> 8 ;
+    $sig = $result & 0xFF ;
+    die "$0: rsync died with signal $sig, error $!\n"  if $sig ;
+    die "$0: rsync died with error $!\n" ;
+  }
+  $lflines = `wc -l $logfilename` ;
+  print "$logfilename shows $lflines lines\n" ;
+
+  print "Resetting flags in '$md5name'\n" ;
+  foreach $srcpath (keys %md5s)
+  {
+    next unless $srcpath =~ /\.(css|html|gif|png)$/;
+    $flagmd5 = $md5s{$srcpath} ;
+    ($isnew, $md5digest) = getmd5isnewanddigest($flagmd5) ;
+    if ($isnew) 
+    {
+      $md5s{$srcpath} = '0,' . getmd5digest($flagmd5) ;
+    }
+  }
+}
+untie %md5s ;
+
+########################################################################
+# We end by putting the date into $projname.finaldate, to signal that  #
+# we have made the checksums, and they can be reused next time         #
+########################################################################
+$finaldatename = "LogsAndData/$projname.finaldate" ;
+$result = system "date > $finaldatename" ;
+die "Something happened to system date > $finaldatename: result = $result\n" 
+    if $result ;
+
+
+#  NEED TO ADD RESETTING FINALDATE AND MD5 in case of $donew
+if ($donew)
+{
+  # Now make the md5s for next time, and record final date
+  $result = system "mknewmd5 $projname" ;
+  die "Something happened to system mknewmd5 $projname: result = $result\n" 
+      if $result ;
+  $result = system "date > $finaldatename" ;
+  die "Something happened to system date > $finaldatename: result = $result\n" 
+      if $result ;
+}
+
+

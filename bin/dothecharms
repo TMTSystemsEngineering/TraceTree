@@ -1,0 +1,89 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+
+require "fileutils.pl" ;
+
+@dirlist = sort(getdirlist('ttr/CHARM')) ;
+print "@dirlist\n" ;
+
+$indexfile = 'moduledots/CHARMTraces/CHARMTracesIndex.html' ;
+open H, "> $indexfile" 
+    or die "Couldn't open $indexfile for writing: $!\n" ;
+    
+$header = <<EOH;
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+  <head><title>CHARM Module Traces</title>
+</head>
+<body>
+  <h2>CHARM Module Traces</h2>
+  <p>CAVEAT: some of these images may be compressed so their hover-maps don't work - but probably doesn't apply to CHARM</p>
+  <p>Many objects in DOORS are missing short text titles</p>
+
+  <p>All in CHARM:</p>
+EOH
+
+print H $header ;
+
+foreach $dir (@dirlist)
+{
+  print "$dir\n" ;
+  print H "<A HREF=\"$dir.html\">$dir</A><br>\n" ;
+  $cmd = "makemoduledots CHARM $dir" ;
+  system $cmd ;
+  
+}
+
+print H "</body>\n</html>\n" ;
+close H ;
+# system "open $indexfile" ;
+
+# print  "Doing attr Controller value Erkmen now\n" ;
+# system "makeattrdots Phaeton Controller Erkmen" ;
+
+########################################################################
+# Now upload.  Very location-dependent.  But this is all special-case  #
+# anyway, no? First delete the dots and maps - they don't need to be   #
+# uploaded.                                                            #
+########################################################################
+$dest='ttr/CHARM' ;
+system "rm -v moduledots/CHARMTraces/*.dot moduledots/CHARMTraces/*.map" ;
+system "rsync -av moduledots/CHARMTraces/* $dest" ;
+
+# system "rm -v attrdots/PhaetonAttributeTraces/*.dot attrdots/PhaetonAttributeTraces/*.map" ;
+# system "rsync -av attrdots/PhaetonAttributeTraces/* $dest" ;

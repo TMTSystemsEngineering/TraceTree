@@ -1,0 +1,311 @@
+#! /usr/bin/perl
+# License Terms
+# 
+# Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
+# Institute of Technology ("Caltech").  U.S. Government sponsorship 
+# acknowledged. 
+# 
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are 
+# met: 
+# 
+# 
+# *   Redistributions of source code must retain the above copyright 
+#     notice, this list of conditions and the following disclaimer.
+# 
+# *   Redistributions in binary form must reproduce the above copyright 
+#     notice, this list of conditions and the following disclaimer in the 
+#     documentation and/or other materials provided with the distribution.
+# 
+# *   Neither the name of Caltech nor its operating division, the Jet 
+#     Propulsion Laboratory, nor the names of its contributors may be used 
+#     to endorse or promote products derived from this software without 
+#     specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY 
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+use DB_File ;
+
+require "fileutils.pl" ;
+require "miscutils.pl" ;
+require "ttmetrics.pl" ;
+require "ttutils.pl" ;
+
+$DEBUG = 0 ;
+
+########################################################################
+# REALLY NEED A REDESIGN.  There should be two main structures:        #
+# metrics-per-object and metrics-per-module.  We should be able to     #
+# completely fill the metrics-per-object structure first, using        #
+# information from the metrics db that xxmlobjtxt generates plus       #
+# stuff we figure out here, using the alllinks file as well.           #
+########################################################################
+# $objmetrics{$objectpath} = [ qwer, asdf, zxcv...]
+# $modmetrics{$modpath} = [ QWER, ASDF, ZXCV... ]
+# We'd define the two arrays of information more or less independently 
+
+$sample =<<EOS;
+ttr/APX/L2_MPP/324	2011-11-28 14:55:07,CreateModDate,0,,,,,1
+EOS
+
+$rootpathname = "ttr" ;
+while (@ARGV) 
+{ 
+  $arg = shift ;
+  if ($arg =~ /^-/)
+  {
+    $DEBUG++ if $arg =~ /^-d/ ;
+  }
+  else
+  {
+    $pname = $arg ;
+  }
+}
+die "Usage:\n  $0 [-d] projectname\n" 
+    unless defined $pname ;
+
+$rootdirname = "$rootpathname/$pname" ; 
+$htmlfilename = "$rootdirname/metrics.html" ;
+
+$metricsdbfile = "LogsAndData/$pname.metrics.db" ;
+print STDERR "metrics db file is '$metricsdbfile'\n" ;
+tie %metricsdb, "DB_File", $metricsdbfile, O_RDWR, 0666, $DB_HASH
+    or die "Couldn't open '$metricsdbfile': $!\n" ;
+
+$linksfile = "$rootdirname/alllinks.txt" ;
+print STDERR "links file is '$linksfile'\n" ;
+open L, $linksfile or die "Couldn't open $linksfile for reading: $!\n" ;
+
+# print "METRICS for $pname\n" ;
+# printheaderrow() ;
+
+foreach $node (sort keys %metricsdb)
+{
+  $nodemetrics = $metricsdb{$node} ;
+# print "xmetrify: node=$node nodemetrics=$nodemetrics\n" ;
+  $nmref = [ ] ;
+  $#$nmref = $MOBJ_LAST ;
+  $len = scalar (@$nmref) ;
+  splitmdbrecord ($nmref, $nodemetrics) ;
+  $objmetrics{$node} = $nmref ;
+# $moddate = $nmref->[$MOBJ_MODDATE] ;
+}
+
+########################################################################
+# Now read links file into separate structure                          #
+########################################################################
+$sample=<<EOSL ;
+/SMAP/VnV/VAM_-_DO_NOT_BASELINE	489	t	/SMAP/L1_RMS	78
+EOSL
+@modules = sort keys %totalcount ;
+# print "keys of totalcount are @modules\n" ;
+while (<L>)
+{
+  chomp ;
+  # don't include leading slashes, because objects don't have them
+  next unless /^\/(.*)\t(\d+)\tt\t\/(.*)\t(\d+)$/ ;
+  ($smod, $snum, $tmod, $tnum) = ($1, $2, $3, $4) ;
+  $smod = "ttr/$smod" ;
+  $tmod = "ttr/$tmod" ;
+# print "smod=$smod snum=$snum tmod=$tmod tnum=$tnum\n" ;
+  $snode = "$smod/$snum" ;
+  $tnode = "$tmod/$tnum" ;
+  $smref = $objmetrics{$snode} ;
+  $tmref = $objmetrics{$tnode} ;
+  # print "snode= $snode tnode=$tnode smref=$smref tmref=$tmref\n" ;
+
+  ######################################################################
+  # NEW STRATEGY.  Do the metrics based on the link itself, then add   #
+  # them into the modules' metrics                                     #
+  ######################################################################
+  next 
+    if (!defined($objmetrics{$snode}) or !defined($objmetrics{$tnode})) ;
+  # put this in routine...
+  if ($snode eq $tnode)
+  {
+    $smref->[$MOBJ_SELFLINK]++ ;
+  }
+  elsif ($smod eq $tmod) 
+  {
+    # should be OK to count just one.  Don't care about both directions 
+    # when summing. 
+    $smref->[$MOBJ_FLOWSTOSAMEMOD]++ ;
+  }
+  else
+  {
+    ####################################################################
+    # not a self link, so count ins and outs.  Remember, the source    #
+    # of a link is the lower level link, so flowdown goes from target  #
+    # to source.  DOORS is dumb that way.                              #
+    ####################################################################
+    $smref->[$MOBJ_FLOWDOWNSIN]++ ;
+    $tmref->[$MOBJ_FLOWDOWNSOUT]++ ;
+
+    ####################################################################
+    # now levels                                                       #
+    ####################################################################
+    $slevel = getmodlevel ($snode) ;
+    $tlevel = getmodlevel ($tnode) ;
+    if ($slevel >= 0 and $tlevel >= 0 and 
+        abs($tlevel-$slevel) > 1
+       )  # then it's a skip level
+    {
+      $smref->[$MOBJ_FLOWDOWNSINSKIPLEVEL]++ ;
+      $tmref->[$MOBJ_FLOWDOWNSOUTSKIPLEVEL]++ ;
+    }
+    ####################################################################
+    # Look for links from the VAM module.  Count both sides, but       #
+    # ignore links into the VAM module.  That oughta be VEMs, no? We   #
+    # really want VAM to VIM.  All this will break down for MSL 2.0,   #
+    # which mixes VIs and VAs in the same module.  So it goes.         #
+    ####################################################################
+    if ($smod =~ /VAM/) # then it's a VAM link
+    {
+      $smref->[$MOBJ_VAMLINKS]++ ;    # the VAM module, no?
+      $tmref->[$MOBJ_VAMLINKS]++ ;    # the VIM module, no?
+    }
+  }
+    
+
+}
+close L ;
+
+# Now for the sums
+foreach $node (sort keys %metricsdb)
+{
+# print STDERR "node=$node\n" ;
+  $nmref = $objmetrics{$node} ;
+  $modname = getmodname($node) ;
+# print STDERR "node=$node modname = $modname\n" ;
+  if (!defined($modmetrics{$modname}))
+  {
+    $mmref = [ ] ;
+    $#$mmref = $MMOD_LAST ;
+    ####################################################################
+    # INITIALIZE VALUES of mmref array                                 #
+    ####################################################################
+    for ($i = 0 ; $i <= $MMOD_LAST ; $i++) { $mmref->[$i] = 0 ; }
+    # MINDATE needs to be initialized really big
+    $mmref->[$MMOD_MINDATE] = 1000*365*3600*24 ; # a thousand years...
+    $modmetrics{$modname} = $mmref ;
+# print "DEFINED modmetrics for $modname\n" ;
+  }
+  else
+  {
+    $mmref = $modmetrics{$modname} ;
+  }
+# print STDERR $nmref->[$MOBJ_OBJNUM] . "\n" if $modname =~ /L2_ERD/ ;
+  $isin3 = $nmref->[$MOBJ_OBJNUM] =~ /^3\./ ;
+  $isshallin3 = ($nmref->[$MOBJ_ISSHALL] and $isin3) ;
+  $moddate     = $nmref->[$MOBJ_MODDATE] ;
+  $moddateint  = $nmref->[$MOBJ_MODDATEINT] ;
+  $moddatetype = $nmref->[$MOBJ_MODDATETYPE] ;
+  
+  $mmref->[$MMOD_OBJECTS]++ ;
+  $mmref->[$MMOD_HEADINGS]              += $nmref->[$MOBJ_ISHEADING] ;
+  $mmref->[$MMOD_TABLECELLS]            += $nmref->[$MOBJ_ISTABLECELL] ;
+  $mmref->[$MMOD_SHALLS]                += $nmref->[$MOBJ_ISSHALL] ;
+  $mmref->[$MMOD_SHALLSIN3]++           if ($nmref->[$MOBJ_ISSHALL] and $isin3) ;
+  $mmref->[$MMOD_3SHALLSLINKEDUP]++     if ($isshallin3 and $nmref->[$MOBJ_FLOWDOWNSIN]) ;
+  $mmref->[$MMOD_3SHALLSLINKEDDOWN]++   if ($isshallin3 and $nmref->[$MOBJ_FLOWDOWNSOUT]) ;
+  $mmref->[$MMOD_SELFLINKS]             += $nmref->[$MOBJ_SELFLINK] ;
+  $mmref->[$MMOD_FLOWSTOSAMEMOD]        += $nmref->[$MOBJ_FLOWSTOSAMEMOD] ;
+  $mmref->[$MMOD_FLOWDOWNSIN]           += $nmref->[$MOBJ_FLOWDOWNSIN] ;
+  $mmref->[$MMOD_FLOWDOWNSOUT]          += $nmref->[$MOBJ_FLOWDOWNSOUT] ;
+  $mmref->[$MMOD_FLOWDOWNSINSKIPLEVEL]  += $nmref->[$MOBJ_FLOWDOWNSINSKIPLEVEL] ;
+  $mmref->[$MMOD_FLOWDOWNSOUTSKIPLEVEL] += $nmref->[$MOBJ_FLOWDOWNSOUTSKIPLEVEL] ;
+  $mmref->[$MMOD_VAMLINKS]              += $nmref->[$MOBJ_VAMLINKS] ;
+
+  $mmref->[$MMOD_MINDATE] = $moddateint 
+      if $moddateint < $mmref->[$MMOD_MINDATE] ;
+  $mmref->[$MMOD_MAXDATE] = $moddateint 
+      if $moddateint > $mmref->[$MMOD_MAXDATE] ;
+  $mmref->[$MMOD_AVGDATE] += $moddateint ;
+}
+
+$reportdate = `date` ;
+chomp $reportdate ;
+print STDERR "Opening html file '$htmlfilename'\n" ;
+open H, "> $htmlfilename"
+    or die "Couldn't open '$htmlfilename' for writing: $!\n" ;
+print H htmlheader("Metrics for $pname") ;
+print H "<H2>Metrics for $pname generated $reportdate</H2>\n" ;
+print H "<p><strong>Note:</strong> the \"modify date\" columns are based on the modification date of the object text, or module baseline date of object text is mod date is not available.</p>\n" ;
+print H "<table border=1>\n" ;
+print H "<tr><th>" . join("</th><th>", "Module", @modheaders) . "</th></tr>\n" ;
+foreach $modname (sort keys %modmetrics)
+{
+  @row = () ;
+  ($pmodname = $modname) =~ s/^ttr\/$pname\/// ;
+  $mmref = $modmetrics{$modname} ;
+
+  # find average date and convert dates back to strings
+  $mmref->[$MMOD_AVGDATE] /= $mmref->[$MMOD_OBJECTS] ;
+  foreach $mmodindex ($MMOD_MINDATE, $MMOD_MAXDATE, $MMOD_AVGDATE)
+  {
+    $mmref->[$mmodindex] = formatdate($mmref->[$mmodindex]) ;
+  }
+
+  push @row, "$pmodname" ;
+  for ($mcount = 0 ; $mcount <= $MMOD_LAST ; $mcount++)
+  {
+    push @row, "" . $mmref->[$mcount] ;
+  }
+  # only the first row is not right-aligned, OK?
+  print H "<tr><td>" . join ("</td><td align=right>", @row) . "</td></tr>\n" ;
+}
+print H "</table>\n" ;
+print H "</body></html>\n" ;
+close H ;
+
+
+########################################################################
+# returns module name given a nodename.  Also erases leading / if      #
+# it's there                                                           #
+########################################################################
+sub getmodname # ($nodename)
+{
+  my ($nodename) = @_ ;
+  my $modname = $nodename ;
+  $modname =~ s/\/\d+$// ;  # get rid of /number at the end
+  $modname =~ s/^\/// ;   # get rid of leading /, just in case
+  return $modname ;
+}
+
+########################################################################
+# returns module level if there's a substring of the form '/Ln-' or    #
+# '/Ln_', or if the modname begins with Ln- or Ln_; else returns -1    #
+########################################################################
+sub getmodlevel # ($modulename)  
+{
+  my ($modname) = @_ ;
+  my $level = -1 ;
+  if ($modname =~ /\/L(\d)[_\-]/) { $level = $1 ; }
+  elsif ($modname =~ /^L(\d)[_\-]/) { $level = $1 ; }
+  print STDERR "module is '$modname'\tlevel $level\n" if $DEBUG ;
+  return $level ;
+}
+
+sub formatdate # (dateint)
+{
+  my ($dateint) = @_ ;
+  my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) 
+    = localtime(int($dateint)) ;
+  $mon++ ;
+  $year+= 1900 ;
+  # $result = sprintf "%04d-%02d-%02d %02d:%02d:%02d", $year, $mon, $mday, $hour, $min, $sec ;
+  $result = sprintf "%04d-%02d-%02d", $year, $mon, $mday ;
+  return $result ;
+}
+

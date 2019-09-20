@@ -1,0 +1,39 @@
+#! /usr/bin/perl
+
+# This script just queries the status, prints it along with the 
+# date/time, and returns a status code as shown below
+
+require "ttutilsnew.pl" ;
+
+print "TT_STATUS_PATHNAME is '$TT_STATUS_PATHNAME'\n" ;
+
+$setit = $ARGV[0] ;
+$errmess = $ARGV[1] ;
+print "Gonna set it to $setit, errmess = '$errmess'\n" ;
+setProcessStatus($setit, $errmess) 
+    or die "UH OH setProcessStatus : $!\n" ;
+
+$status = getProcessStatus() ;
+print "GOT STATUS $status\n" ;
+print "which is " . getProcessStatusEnglish($status) . " in English\n" ;
+# %TT_STATUSES = (
+#     TT_IDLE      => 0,
+#     TT_DXL_BUSY  => 1,
+#     TT_DXL_DONE  => 2,
+#     TT_WGEN_BUSY => 3,
+#     TT_ERROR     => 4,
+#     ) ;
+if ($status == $TT_STATUSES{TT_ERROR})
+{
+    $errmess = getProcessErrorStatus () ;
+    print "   ERROR MESSAGE is '$errmess'\n" ;
+}
+$date = `date` ;
+chomp $date ;
+# print "xstatus: returning code $returnstatus at $date\n" ;
+# if ($returnstatus == 4)
+# {
+  # print "   xstatus error message is '$errmsg'\n" ;
+# }
+# exit $returnstatus ;
+
