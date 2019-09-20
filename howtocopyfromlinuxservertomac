@@ -1,0 +1,16 @@
+# HOW TO COPY the repository.tgz file from the REAN linux server to local git repository
+# cd to local repository
+scp  -i ~/desktop/DOORSTTKey/TMT_Prod_Trace_Tree_Keypair.pem doorsuser@13.56.23.241:/data/doors-ttt/repository.tgz .
+
+
+# IN THE OTHER DIRECTION
+cd ~/desktop/TraceTree
+tar -cvzf newrepository.tgz bin data lib src
+scp  -i newrepository.tgz e/desktop/DOORSTTKey/TMT_Prod_Trace_Tree_Keypair.pem doorsuser@13.56.23.241:/data/doors-ttt
+
+
+# NOTE: data here on this and in the github repositories does NOT have ttr and ttrnew, which are huge.  data on the READN server DOES have them - don't include in repository.tgz.  Create it like this
+	# ON LINUX SERVER
+cd doors-ttt
+tar -cvzf repository.tgz bin data/DOORS data/resources lib src
+
