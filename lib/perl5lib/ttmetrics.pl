@@ -1,4 +1,3 @@
-
 # License Terms
 # 
 # Copyright (c) 2006,2007,2008,2009,2010,2011,2012,2013, California 
@@ -40,6 +39,8 @@ use Time::Local ;
 # should use constant here...
 # object-level stats
 $countconst                 = 0 ;
+# FROM HERE TO THERE has to be in this order,
+# because of the split of the object metrics record
 $MOBJ_MODDATE               = $countconst++ ;
 $MOBJ_MODDATETYPE           = $countconst++ ;
 $MOBJ_MODDATEINT            = $countconst++ ;
@@ -50,6 +51,9 @@ $MOBJ_ISTABLEROW            = $countconst++ ;
 $MOBJ_ISTABLECELL           = $countconst++ ;
 $MOBJ_ISTABLEPART           = $countconst++ ;
 $MOBJ_ISSHALL               = $countconst++ ;
+$MOBJ_ISDELETED             = $countconst++ ;
+$MOBJ_PROJID                = $countconst++ ;
+// "TO THERE" 
 $MOBJ_SELFLINK              = $countconst++ ;
 $MOBJ_FLOWSTOSAMEMOD        = $countconst++ ;
 $MOBJ_FLOWDOWNSIN           = $countconst++ ;
@@ -65,7 +69,7 @@ $MMOD_OBJECTS               = $countconst++ ;
 $MMOD_HEADINGS              = $countconst++ ;
 $MMOD_TABLECELLS            = $countconst++ ;
 $MMOD_SHALLS                = $countconst++ ;
-$MMOD_SHALLSIN3             = $countconst++ ;
+$MMOD_NREQUIREMENTS         = $countconst++ ;
 $MMOD_SELFLINKS             = $countconst++ ;
 $MMOD_FLOWSTOSAMEMOD        = $countconst++ ;
 $MMOD_FLOWDOWNSIN           = $countconst++ ;
@@ -103,48 +107,69 @@ $MMOD_LAST                  = $countconst-1 ;    # SHOULD BE A BETTER WAY
 # takes reference to MDB array and recordstring
 # we assume, for now, that the recordstring is very simple csv, no 
 # quotes or anything 
-sub splitmdbrecord # ($nodearrayref, $recordstring)
+sub makemdbrecord # ($moddate,$onum,$projid,$isshall,$isdeleted)
 {
-  my ($nmref, $recordstring) = @_ ;
-  my ($moddate, $moddatetype, $objnum, $isheading, $isTableHeader,
-      $isTableRow, $isTableCell, $isTablePart, $isshall) 
-	= split ',', $recordstring ;
+    my ($moddate,$projid,$isshall,$isdeleted) = @_ ;
+    # this assumes no commas in the values!  should be OK...
+    my $mdbrecord = "$moddate,$projid,$isshall,$isdeleted" ;
+    return $mdbrecord ;
+}
+
+########################################################################
+# getnodedata should return a hash with all the node-specific data in  #
+# it, whether straight from the database or derived                    #
+########################################################################
+sub getnodedata($mdbrecord)
+# do we want this to be a hash now, rather than array?  is more flexible
+sub splitmdbrecord # ($nodearrayref, $mdbrecord)
+{
+    my ($nmref, $mdbrecord) = @_ ;
+    my ($moddate, $isshall, $isdeleted, $projid) 
+        = split ',', $mdbrecord ;
 
 # print "recordstring = $recordstring\n" ;
 # object-level stats
-  $nmref->[$MOBJ_ISHEADING]     = 0 ;
-  $nmref->[$MOBJ_ISTABLEHEADER] = 0 ;
-  $nmref->[$MOBJ_ISTABLEROW]    = 0 ;
-  $nmref->[$MOBJ_ISTABLECELL]   = 0 ; 
-  $nmref->[$MOBJ_ISTABLEPART]   = 0 ;
-  $nmref->[$MOBJ_ISSHALL]       = 0 ;
-  $nmref->[$MOBJ_MODDATE]     = $moddate ;
-  $nmref->[$MOBJ_MODDATEINT]  = $moddate ;
-  $nmref->[$MOBJ_MODDATETYPE] = $moddatetype ;
-  $nmref->[$MOBJ_OBJNUM]      = $objnum ;
-  $nmref->[$MOBJ_ISHEADING]++     if $isheading ;
-  $nmref->[$MOBJ_ISTABLEHEADER]++ if $isTableHeader ;
-  $nmref->[$MOBJ_ISTABLEROW]++    if $isTableRow ;
-  $nmref->[$MOBJ_ISTABLECELL]++   if $isTableCell ; 
-  $nmref->[$MOBJ_ISTABLEPART]++   if $isTablePart ;
-  $nmref->[$MOBJ_ISSHALL]++       if $isshall ;
+    // booleans start false
+    $nmref->[$MOBJ_HASPROJID]     = 0 ;
+    $nmref->[$MOBJ_ISHEADING]     = 0 ;
+    $nmref->[$MOBJ_ISTABLEHEADER] = 0 ;
+    $nmref->[$MOBJ_ISTABLEROW]    = 0 ;
+    $nmref->[$MOBJ_ISTABLECELL]   = 0 ; 
+    $nmref->[$MOBJ_ISTABLEPART]   = 0 ;
+    $nmref->[$MOBJ_ISSHALL]       = 0 ;
+    
+    // actual data
+    $nmref->[$MOBJ_MODDATE]     = $moddate ;
+    $nmref->[$MOBJ_MODDATEINT]  = $moddate ;
+    $nmref->[$MOBJ_MODDATETYPE] = $moddatetype ;
+    $nmref->[$MOBJ_OBJNUM]      = $objnum ;
+    
+    // figure out booleans
+    $nmref->[$MOBJ_HASPROJID]++     if $projid ;
+    $nmref->[$MOBJ_ISHEADING]++     if $isheading ;
+    $nmref->[$MOBJ_ISTABLEHEADER]++ if $isTableHeader ;
+    $nmref->[$MOBJ_ISTABLEROW]++    if $isTableRow ;
+    $nmref->[$MOBJ_ISTABLECELL]++   if $isTableCell ; 
+    $nmref->[$MOBJ_ISTABLEPART]++   if $isTablePart ;
+    $nmref->[$MOBJ_ISSHALL]++       if $isshall ;
+    $nmref->[$MOBJ_ISDELETED]++     if $isdeleted ;
 
-  ######################################################################
-  # Now take a look at moddate to get an age. We let calling program   #
-  # decide what to do about moddatetype                                #
-  ######################################################################
-  # format: '2007-10-08 07:24:14'
-  my $timeofobj ;
-  if ($moddate =~ /^(\d\d\d\d)-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)$/)
-  {
-    my ($year,$month,$dom,$hour,$min,$sec) = ($1, $2, $3, $4, $5, $6) ;
-    $timeofobj = timelocal ($sec, $min, $hour, $dom, $month-1, $year-1900) ;
-  }
-  else
-  {
-    warn "COULDN'T PARSE '$moddate'\n" ;
-  }
-  $nmref->[$MOBJ_MODDATEINT] = $timeofobj ;
+    ######################################################################
+    # Now take a look at moddate to get an age. We let calling program   #
+    # decide what to do about moddatetype                                #
+    ######################################################################
+    # format: '2007-10-08 07:24:14'
+    my $timeofobj ;
+    if ($moddate =~ /^(\d\d\d\d)-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)$/)
+    {
+        my ($year,$month,$dom,$hour,$min,$sec) = ($1, $2, $3, $4, $5, $6) ;
+        $timeofobj = timelocal ($sec, $min, $hour, $dom, $month-1, $year-1900) ;
+    }
+    else
+    {
+        warn "COULDN'T PARSE '$moddate'\n" ;
+    }
+    $nmref->[$MOBJ_MODDATEINT] = $timeofobj ;
 }
 
 
@@ -167,4 +192,3 @@ sub splitmdbrecord # ($nodearrayref, $recordstring)
 #}
 
 1;
-

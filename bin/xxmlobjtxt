@@ -41,6 +41,7 @@ use DB_File ;
 
 require "fileutils.pl" ;
 require "ttutils.pl" ;
+require "ttmetrics.pl" ;
 require "tt_projuniq.pl" ;
 require "xmlutils.pl" ;
 
@@ -112,6 +113,7 @@ foreach $node (@nodelist)
     open PERT, "> $perttxtfilename"
 	or die "Couldn't open $perttxtfilename for writing: $!\n" ;
 
+    $projid = "" ;
     if ($doProjID)
     {
       $attrvalue = "" ;
@@ -124,7 +126,8 @@ foreach $node (@nodelist)
       {
 	$attrvalue =~ s/\n/\\n/gm ; # this should never happen, but ...
       }
-      print PERT "ProjID:\t$attrvalue\n" ;
+      $projid = $attrvalue ;
+      print PERT "ProjID:\t$projid\n" ;
     } 
   
     $ref = eval { XMLin($xmlfilename) };
@@ -190,9 +193,11 @@ foreach $node (@nodelist)
     # ) = gettoplevelattrs ($ref) ;
     # $isTablePart = ($isTableHeader or $isTableRow or $isTableCell) ;
     $isshall = $objtxt =~ /\bshall\b/i ;
-    $metricsstring = "$moddate,$moddatetype,$onum,$isheading,$isTableHeader,"
-                  . "$isTableRow,$isTableCell,$isTablePart,$isshall" ;
-    $metrics{$node} = $metricsstring ;
+    $isdeleted = $objtxt =~ /Deleted:/ ;
+    # $metricsstring = "$moddate,$moddatetype,$onum,$isheading,$isTableHeader,"
+    #               . "$isTableRow,$isTableCell,$isTablePart,$isshall,$isdeleted,$projid" ;
+    $metricsrecord = makemdbrecord($moddate,$projid,$isshall,$isdeleted) ;
+    $metrics{$node} = $metricsrecord ;   # was $metricsstring
     
     ####################################################################
     # objtxt file gets objtxt or shrtxt or hdrtxt, in that order of    #
@@ -464,5 +469,4 @@ sub reporterrorinxml # ($inxmlname, $errlinenumber, $errcolnumber) ;
   }
   close ERRXMLIN ;
 }
-
 
