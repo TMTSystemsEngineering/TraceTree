@@ -134,8 +134,6 @@ foreach $node (sort keys %metricsdb)
 $sample=<<EOSL ;
 /SMAP/VnV/VAM_-_DO_NOT_BASELINE	489	t	/SMAP/L1_RMS	78
 EOSL
-@modules = sort keys %totalcount ;
-# print "keys of totalcount are @modules\n" ;
 while (<L>)
 {
     chomp ;
@@ -266,7 +264,7 @@ foreach $node (sort keys %metricsdb)
         $modmetrics{$modname} = $mmref ;
         if ($isDRD) { push @DRDlist, $modname ; }
         elsif ($isICD) { push @ICDlist, $modname ; }
-        elsif ($isVAM) { push @ICDlist, $modname ; }
+        elsif ($isVAM) { push @VAMlist, $modname ; }
         else { warn "UNKNOWN MODULE TYPE FOR object $modname\n" ; }
     }
     else
@@ -285,7 +283,7 @@ foreach $node (sort keys %metricsdb)
     # OK, now we differentiate by type
     if ($isDRD)
     {
-        $mmref->{"REQS_WITH_PARENTS"}++ if $nodref->{"PARENT_IS_DRDICD"} ;
+        $mmref->{"REQS_WITH_PARENTS"}++ if $noderef->{"PARENT_IS_DRDICD"} ;
         $mmref->{"REQS_WITH_CHILDREN"}++ if $noderef->{"CHILD_IS_DRDICD"} ;
         $mmref->{"VA_LINKS"}++ if $noderef->{"VA_VERIFIES_DRDICD"} ;
     }
