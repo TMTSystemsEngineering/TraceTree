@@ -285,9 +285,9 @@ foreach $node (sort keys %metricsdb)
     # OK, now we differentiate by type
     if ($isDRD)
     {
-        $mmref->{"REQS_WITH_PARENTS"}++ if $nodref->{"PARENT_IS_DRDICD") ;
-        $mmref->{"REQS_WITH_CHILDREN"}++ if $noderef->{"CHILD_IS_DRDICD") ;
-        $mmref->{"VA_LINKS"}++ if $noderef->{"VA_VERIFIES_DRDICD") ;
+        $mmref->{"REQS_WITH_PARENTS"}++ if $nodref->{"PARENT_IS_DRDICD"} ;
+        $mmref->{"REQS_WITH_CHILDREN"}++ if $noderef->{"CHILD_IS_DRDICD"} ;
+        $mmref->{"VA_LINKS"}++ if $noderef->{"VA_VERIFIES_DRDICD"} ;
     }
     elsif ($isICD)
     {
@@ -313,13 +313,13 @@ open H, "> $htmlfilename"
         or die "Couldn't open '$htmlfilename' for writing: $!\n" ;
 print H htmlheader("Metrics for $pname") ;
 print H "<H2>Metrics for $pname generated $reportdate</H2>\n" ;
-print H <<EOX
+print H <<EOX;
 <p><strong>Note:</strong> the \"modify date\" column is based 
  on the modification date of the object text, or module baseline
  date of object text is mod date is not available.</p>
 EOX
 
-print H "<H3"DRD METRICS</H3>\n" ;
+print H "<H3>DRD METRICS</H3>\n" ;
 @drdheaders = ["Module", "# Objects", "# Requirements with Parents",
         "# Requirements with Children", "# Links within Module",
         "# Requirements with TBx", "# Links from VAM",
