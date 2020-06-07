@@ -323,7 +323,7 @@ print H "<H3>DRD METRICS</H3>\n" ;
 @drdheaders = ["Module", "# Objects", "# Requirements with Parents",
         "# Requirements with Children", "# Links within Module",
         "# Requirements with TBx", "# Links from VAM",
-        "Date of Last Modification" ]
+        "Date of Last Modification" ] ;
 print H "<table border=1>\n" ;
 print H "<tr><th>" . join("</th><th>", "Module", @drdheaders) . "</th></tr>\n" ;
 foreach $modname (@DRDlist)
