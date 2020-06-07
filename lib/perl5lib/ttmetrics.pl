@@ -140,7 +140,7 @@ sub modIsDRD # (modname or nodepath)
 {
     my ($modpath) = @_ ;
     my $modname = getModnameOnly($modpath) ;
-    return $modname =~ /^DRD_/ or $modname eq "Science Cases" ;
+    return $modname =~ /^DRD_/ or $modname eq "Science_Cases" ;
 }
 sub modIsICD # (modname or nodepath)
 {;
@@ -162,7 +162,7 @@ sub getModTypeBooleans # (modname or nodepath)
     my ($modpath) = @_ ;
     my $modname = getModnameOnly($modpath) ;
     my ($isDRD, $isICD, $isVAM) ;
-    $isDRD = $modname =~ /^DRD_/ or $modname eq "Science Cases" ;
+    $isDRD = $modname =~ /^DRD_/ or $modname eq "Science_Cases" ;
     $isICD = $modname =~ /^ICD_/ ;
     $isVAM = $modname =~ /^VAM_/ ;
     return ($isDRD, $isICD, $isVAM) ;

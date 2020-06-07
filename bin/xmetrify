@@ -244,9 +244,9 @@ while (<L>)
 }
 close L ;
 
-@DRDlist = [ ] ;
-@ICDlist = [ ] ;
-@VAMlist = [ ] ;
+@DRDlist = () ;
+@ICDlist = () ;
+@VAMlist = () ;
 
 # Now for the sums
 foreach $node (sort keys %metricsdb)
@@ -318,14 +318,15 @@ print H <<EOX;
 EOX
 
 print H "<H3>DRD METRICS</H3>\n" ;
-@drdheaders = ["Module", "# Objects", "# Requirements with Parents",
+@drdheaders = ("Module", "# Objects", "# Requirements with Parents",
         "# Requirements with Children", "# Links within Module",
         "# Requirements with TBx", "# Links from VAM",
-        "Date of Last Modification" ] ;
+        "Date of Last Modification" ) ;
 print H "<table border=1>\n" ;
-print H "<tr><th>" . join("</th><th>", "Module", @drdheaders) . "</th></tr>\n" ;
+print H "<tr><th>" . join("</th><th>", @drdheaders) . "</th></tr>\n" ;
 foreach $modname (@DRDlist)
 {
+print "In DRDlist loop, modname = $modname\n" ;
     %mmref = $modmetrics{$modname};
     @row = () ;
     ($pmodname = $modname) =~ s/^ttr\/$pname\/// ;
