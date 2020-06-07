@@ -39,6 +39,7 @@
 use XML::Simple;
 use DB_File ;
 
+# for perl -w syntax check use lib "../lib/perl5lib" ;
 require "fileutils.pl" ;
 require "ttutils.pl" ;
 require "ttmetrics.pl" ;
@@ -194,9 +195,10 @@ foreach $node (@nodelist)
     # $isTablePart = ($isTableHeader or $isTableRow or $isTableCell) ;
     $isshall = $objtxt =~ /\bshall\b/i ;
     $isdeleted = $objtxt =~ /Deleted:/ ;
+    $hasTBX    = $objtxt =~ /\bTB[CDS]\b/ ;
     # $metricsstring = "$moddate,$moddatetype,$onum,$isheading,$isTableHeader,"
     #               . "$isTableRow,$isTableCell,$isTablePart,$isshall,$isdeleted,$projid" ;
-    $metricsrecord = makemdbrecord($moddate,$projid,$isshall,$isdeleted) ;
+    $metricsrecord = makemdbrecord($moddate,$onum,$projid,$isshall,$isdeleted,$hasTBX) ;
     $metrics{$node} = $metricsrecord ;   # was $metricsstring
     
     ####################################################################

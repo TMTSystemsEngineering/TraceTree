@@ -36,54 +36,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
 use Time::Local ;
 
-# should use constant here...
-# object-level stats
-$countconst                 = 0 ;
-# FROM HERE TO THERE has to be in this order,
-# because of the split of the object metrics record
-$MOBJ_MODDATE               = $countconst++ ;
-$MOBJ_MODDATETYPE           = $countconst++ ;
-$MOBJ_MODDATEINT            = $countconst++ ;
-$MOBJ_OBJNUM                = $countconst++ ;
-$MOBJ_ISHEADING             = $countconst++ ;
-$MOBJ_ISTABLEHEADER         = $countconst++ ;
-$MOBJ_ISTABLEROW            = $countconst++ ;
-$MOBJ_ISTABLECELL           = $countconst++ ;
-$MOBJ_ISTABLEPART           = $countconst++ ;
-$MOBJ_ISSHALL               = $countconst++ ;
-$MOBJ_ISDELETED             = $countconst++ ;
-$MOBJ_PROJID                = $countconst++ ;
-// "TO THERE" 
-$MOBJ_SELFLINK              = $countconst++ ;
-$MOBJ_FLOWSTOSAMEMOD        = $countconst++ ;
-$MOBJ_FLOWDOWNSIN           = $countconst++ ;
-$MOBJ_FLOWDOWNSOUT          = $countconst++ ;
-$MOBJ_FLOWDOWNSINSKIPLEVEL  = $countconst++ ;
-$MOBJ_FLOWDOWNSOUTSKIPLEVEL = $countconst++ ;
-$MOBJ_VAMLINKS              = $countconst++ ;
-$MOBJ_LAST                  = $countconst-1 ;    # SHOULD BE A BETTER WAY
-
-# module-level stats
-$countconst                 = 0 ;
-$MMOD_OBJECTS               = $countconst++ ;
-$MMOD_HEADINGS              = $countconst++ ;
-$MMOD_TABLECELLS            = $countconst++ ;
-$MMOD_SHALLS                = $countconst++ ;
-$MMOD_NREQUIREMENTS         = $countconst++ ;
-$MMOD_SELFLINKS             = $countconst++ ;
-$MMOD_FLOWSTOSAMEMOD        = $countconst++ ;
-$MMOD_FLOWDOWNSIN           = $countconst++ ;
-$MMOD_FLOWDOWNSOUT          = $countconst++ ;
-$MMOD_FLOWDOWNSINSKIPLEVEL  = $countconst++ ;
-$MMOD_FLOWDOWNSOUTSKIPLEVEL = $countconst++ ;
-$MMOD_3SHALLSLINKEDUP       = $countconst++ ;
-$MMOD_3SHALLSLINKEDDOWN     = $countconst++ ;
-$MMOD_VAMLINKS              = $countconst++ ;
-$MMOD_MINDATE               = $countconst++ ;
-$MMOD_AVGDATE               = $countconst++ ;
-$MMOD_MAXDATE               = $countconst++ ;
-$MMOD_LAST                  = $countconst-1 ;    # SHOULD BE A BETTER WAY
-
 @modheaders = (
         "# Objects",
         "# Headings",
@@ -107,11 +59,11 @@ $MMOD_LAST                  = $countconst-1 ;    # SHOULD BE A BETTER WAY
 # takes reference to MDB array and recordstring
 # we assume, for now, that the recordstring is very simple csv, no 
 # quotes or anything 
-sub makemdbrecord # ($moddate,$onum,$projid,$isshall,$isdeleted)
+sub makemdbrecord # ($moddate,$onum,$projid,$isshall,$isdeleted,$hastbx)
 {
-    my ($moddate,$projid,$isshall,$isdeleted) = @_ ;
+    my ($moddate,$onum,$projid,$isshall,$isdeleted,$hastbx) = @_ ;
     # this assumes no commas in the values!  should be OK...
-    my $mdbrecord = "$moddate,$projid,$isshall,$isdeleted" ;
+    my $mdbrecord = "$moddate,onum,$projid,$isshall,$isdeleted,$hastbx" ;
     return $mdbrecord ;
 }
 
@@ -119,76 +71,101 @@ sub makemdbrecord # ($moddate,$onum,$projid,$isshall,$isdeleted)
 # getnodedata should return a hash with all the node-specific data in  #
 # it, whether straight from the database or derived                    #
 ########################################################################
-sub getnodedata($mdbrecord)
-# do we want this to be a hash now, rather than array?  is more flexible
-sub splitmdbrecord # ($nodearrayref, $mdbrecord)
+# data node keys:
+# DIRECT as calculated by xxmlobjtxt
+#    MODDATE     modification date
+#    ONUM        object number
+#    PROJID      project id as opposed to DOORS id
+#    ISSHALL     has a "shall" in the text
+#    ISDELETED   is deleted: text starts with "Deleted:"
+#    HASTBX      has TBD or TBC or TBS in the text, as a word
+# DERIVED
+#    ISREQUIREMENT  is in section 3 or above, 
+#                   is not deleted, has projid not blank
+#    LINK_TO_SAME_MOD
+#    ERROR_LINK_TO_SELF
+#    CHILD_IS_DRDIRD
+#    CHILD_IS_REQT
+#    ERROR_ICD_ICD_LINK
+#    ERROR_NO_STYPE
+#    ERROR_NO_TTYPE
+#    ERROR_REQT_VA_LINK
+#    ERROR_VA_VA_LINK
+#    ERROR_WRONG_WAY_VLINK
+#    PARENT_IS_DRDICD
+#    PARENT_IS_REQT
+#    VA_VERIFIES_DRDIRD
+#    VA_VERIFIES_REQT
+
+sub getnodedata # ($mdbrecord)
 {
-    my ($nmref, $mdbrecord) = @_ ;
-    my ($moddate, $isshall, $isdeleted, $projid) 
-        = split ',', $mdbrecord ;
-
-# print "recordstring = $recordstring\n" ;
-# object-level stats
-    // booleans start false
-    $nmref->[$MOBJ_HASPROJID]     = 0 ;
-    $nmref->[$MOBJ_ISHEADING]     = 0 ;
-    $nmref->[$MOBJ_ISTABLEHEADER] = 0 ;
-    $nmref->[$MOBJ_ISTABLEROW]    = 0 ;
-    $nmref->[$MOBJ_ISTABLECELL]   = 0 ; 
-    $nmref->[$MOBJ_ISTABLEPART]   = 0 ;
-    $nmref->[$MOBJ_ISSHALL]       = 0 ;
+    my ($mdbrecord) = @_ ;
+    my $datahashref = {} ;
+    @mdb = split ',', $mdbrecord ;
     
-    // actual data
-    $nmref->[$MOBJ_MODDATE]     = $moddate ;
-    $nmref->[$MOBJ_MODDATEINT]  = $moddate ;
-    $nmref->[$MOBJ_MODDATETYPE] = $moddatetype ;
-    $nmref->[$MOBJ_OBJNUM]      = $objnum ;
-    
-    // figure out booleans
-    $nmref->[$MOBJ_HASPROJID]++     if $projid ;
-    $nmref->[$MOBJ_ISHEADING]++     if $isheading ;
-    $nmref->[$MOBJ_ISTABLEHEADER]++ if $isTableHeader ;
-    $nmref->[$MOBJ_ISTABLEROW]++    if $isTableRow ;
-    $nmref->[$MOBJ_ISTABLECELL]++   if $isTableCell ; 
-    $nmref->[$MOBJ_ISTABLEPART]++   if $isTablePart ;
-    $nmref->[$MOBJ_ISSHALL]++       if $isshall ;
-    $nmref->[$MOBJ_ISDELETED]++     if $isdeleted ;
+    # DIRECT
+    $datahashref->{"MODDATE"}   = $mdb[0] ;
+    $datahashref->{"ONUM"}      = $mdb[1] ;
+    $datahashref->{"PROJID"}    = $mdb[2] ;
+    $datahashref->{"ISSHALL"}   = $mdb[3] ;
+    $datahashref->{"ISDELETED"} = $mdb[4] ;
+    $datahashref->{"HASTBX"}    = $mdb[5] ;
+    # DERIVED
+    ($objsectionnum = $datahashref->{"ONUM"}) =~ s/\..*$// ;
+    $isin3orabove = $objsectionnum >= 3 ;
+    $datahashref->{"ISREQUIREMENT"} = 
+            (   
+                $isin3orabove 
+            and (not $datahashref->{"ISDELETED"})
+            and ($datahashref->{"PROJID"})
+            );
 
-    ######################################################################
-    # Now take a look at moddate to get an age. We let calling program   #
-    # decide what to do about moddatetype                                #
-    ######################################################################
-    # format: '2007-10-08 07:24:14'
-    my $timeofobj ;
-    if ($moddate =~ /^(\d\d\d\d)-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)$/)
-    {
-        my ($year,$month,$dom,$hour,$min,$sec) = ($1, $2, $3, $4, $5, $6) ;
-        $timeofobj = timelocal ($sec, $min, $hour, $dom, $month-1, $year-1900) ;
-    }
-    else
-    {
-        warn "COULDN'T PARSE '$moddate'\n" ;
-    }
-    $nmref->[$MOBJ_MODDATEINT] = $timeofobj ;
+    return $datahashref ;
 }
 
+sub getModnameOnly # (module or node path)
+{
+    my ($modpath) = @_ ;
+    # get rid of everything but the modname itself.
+    $modpath =~ s/\/\d+$// ;  # gets rid of node number if any
+    $modpath =~ s/^.*\/// ; # gets rid of anything up to a slash, leaving just the name
+    return $modpath ;
+}
 
 ########################################################################
-# SEEMS TO BE UNUSED                                                   #
+# these test routines are here to encapsulate more complicated         #
+# situations if they arise                                             #
 ########################################################################
-#sub addobjmetric # ($objpath, $id, $val)
-#{
-#  my ($objpath, $id, $val) = @_ ;
-#  # check id - in range
-#  die "addobjmetric: id=$id out of range (0..$MOBJ_LAST)\n"
-#      if $id < 0 or $id > MOBJ_LAST ;
-#  if (!exists $objmetrics{$objpath}) 
-#  {
-#    $objmetrics{$objpath} = [] ;
-#  }
-#  $ref = $objmetrics{$objpath} ;
-#  $ref->[$id] = $val ;
-## do we want to return something?
-#}
+sub modIsDRD # (modname or nodepath)
+{
+    my ($modpath) = @_ ;
+    my $modname = getModnameOnly($modpath) ;
+    return $modname =~ /^DRD_/ or $modname eq "Science Cases" ;
+}
+sub modIsICD # (modname or nodepath)
+{;
+    my ($modpath) = @_ ;
+    my $modname = getModnameOnly($modpath) ;
+    return $modname =~ /^ICD_/ ;
+}
+sub modIsVAM # (modname or nodepath)
+{
+    my ($modpath) = @_ ;
+    my $modname = getModnameOnly($modpath) ;
+    return $modname =~ /^VAM_/ ;
+}
 
+# Inefficient way to get type booleans all at once.  But more efficient than 
+# call modIsDRD etc.
+sub getModTypeBooleans # (modname or nodepath)
+{
+    my ($modpath) = @_ ;
+    my $modname = getModnameOnly($modpath) ;
+    my ($isDRD, $isICD, $isVAM) ;
+    $isDRD = $modname =~ /^DRD_/ or $modname eq "Science Cases" ;
+    $isICD = $modname =~ /^ICD_/ ;
+    $isVAM = $modname =~ /^VAM_/ ;
+    return ($isDRD, $isICD, $isVAM) ;
+}
+    
 1;

@@ -1,2 +1,0 @@
-#! /bin/tcsh
-rsync -v index.html exp*.png *.css jgrimes@sscae-srv2.jpl.nasa.gov:trace
