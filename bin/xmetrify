@@ -327,7 +327,7 @@ print H "<tr><th>" . join("</th><th>", @drdheaders) . "</th></tr>\n" ;
 foreach $modname (@DRDlist)
 {
 print "In DRDlist loop, modname = $modname\n" ;
-    %mmref = $modmetrics{$modname};
+    $mmref = $modmetrics{$modname};
     @row = () ;
     ($pmodname = $modname) =~ s/^ttr\/$pname\/// ;
     
