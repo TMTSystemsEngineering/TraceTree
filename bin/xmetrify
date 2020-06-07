@@ -79,7 +79,9 @@ die "Usage:\n  $0 [-d] projectname\n"
 $rootdirname = "$rootpathname/$pname" ; 
 $htmlfilename = "$rootdirname/metrics.html" ;
 
-$metricsdbfile = "LogsAndData/$pname.metrics.db" ;
+# test config
+$metricsdbfile = "LogsAndData/$pname.metricsX.db" ;
+# $metricsdbfile = "LogsAndData/$pname.metrics.db" ;
 print STDERR "metrics db file is '$metricsdbfile'\n" ;
 tie %metricsdb, "DB_File", $metricsdbfile, O_RDWR, 0666, $DB_HASH
         or die "Couldn't open '$metricsdbfile': $!\n" ;

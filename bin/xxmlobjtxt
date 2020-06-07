@@ -63,7 +63,9 @@ print "$0: doing $rootdirname\n" ;
 ($doNotVap, $doProjID) = getProjectUniq ($pname) ;
 
 # We need a metrics file
-$metricsdbfile = "LogsAndData/$pname.metrics.db" ;
+# test config
+$metricsdbfile = "LogsAndData/$pname.metricsX.db" ;
+# $metricsdbfile = "LogsAndData/$pname.metrics.db" ;
 tie %metrics, "DB_File", $metricsdbfile, O_RDWR|O_CREAT, 0666, $DB_HASH
     or die "Cannot open '$metricsdbfile': $!\n" ;
 
