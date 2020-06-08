@@ -92,6 +92,7 @@ $updatedcount = 0 ;
 $nxmls = scalar @nodelist ;
 foreach $node (@nodelist)
 {
+print "DOING NODE $node\n" ;
   $xmlfilename = $node . ".xml" ;
   $attrfilename = $node . ".attr" ;
   $perttxtfilename = $node . ".perttxt" ;    # "Pertinent Text" will include 
@@ -196,10 +197,9 @@ foreach $node (@nodelist)
     # ) = gettoplevelattrs ($ref) ;
     # $isTablePart = ($isTableHeader or $isTableRow or $isTableCell) ;
     $isshall = $objtxt =~ /\bshall\b/i ;
-    $isdeleted = $objtxt =~ /Deleted:/ ;
+    $isdeleted = $objtxt =~ /^Deleted:/ ;
     $hasTBX    = $objtxt =~ /\bTB[CDS]\b/ ;
-    # $metricsstring = "$moddate,$moddatetype,$onum,$isheading,$isTableHeader,"
-    #               . "$isTableRow,$isTableCell,$isTablePart,$isshall,$isdeleted,$projid" ;
+
     $metricsrecord = makemdbrecord($moddate,$onum,$projid,$isshall,$isdeleted,$hasTBX) ;
     $metrics{$node} = $metricsrecord ;   # was $metricsstring
     

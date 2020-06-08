@@ -63,7 +63,8 @@ sub makemdbrecord # ($moddate,$onum,$projid,$isshall,$isdeleted,$hastbx)
 {
     my ($moddate,$onum,$projid,$isshall,$isdeleted,$hastbx) = @_ ;
     # this assumes no commas in the values!  should be OK...
-    my $mdbrecord = "$moddate,onum,$projid,$isshall,$isdeleted,$hastbx" ;
+    my $mdbrecord = "$moddate,$onum,$projid,$isshall,$isdeleted,$hastbx" ;
+print "mdbrecord = '$mdbrecord'\n" ;
     return $mdbrecord ;
 }
 
