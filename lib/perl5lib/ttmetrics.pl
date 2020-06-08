@@ -126,7 +126,7 @@ print "   isin3orabove  = $isin3orabove\n" ;
             (   
                 $isin3orabove 
             and (not $datahashref->{"ISDELETED"})
-            and ($datahashref->{"PROJID"})
+            and ($datahashref->{"PROJID"} ne "")
             );
 print "      isreqt   = " . $datahashref->{"ISREQUIREMENT"}     . "\n" ;
 
