@@ -111,12 +111,12 @@ sub getnodedata # ($mdbrecord)
     $datahashref->{"ISSHALL"}   = $mdb[3] ;
     $datahashref->{"ISDELETED"} = $mdb[4] ;
     $datahashref->{"HASTBX"}    = $mdb[5] ;
-print ("gnd: moddate   = " . $datahashref->{"MODDATE"} . "\n" ;
-print ("        onum   = " . $datahashref->{"ONUM"}    . "\n" ;
-print ("      projid   = " . $datahashref->{"PROJID"}    . "\n" ;
-print ("       shall   = " . $datahashref->{"ISSHALL"}   . "\n" ;
-print ("     deleted   = " . $datahashref->{"ISDELETED"}  . "\n" ;
-print ("      hsttbx   = " . $datahashref->{"HASTBX"}     . "\n" ;
+print "gnd: moddate   = " . $datahashref->{"MODDATE"} . "\n" ;
+print "        onum   = " . $datahashref->{"ONUM"}    . "\n" ;
+print "      projid   = " . $datahashref->{"PROJID"}    . "\n" ;
+print "       shall   = " . $datahashref->{"ISSHALL"}   . "\n" ;
+print "     deleted   = " . $datahashref->{"ISDELETED"}  . "\n" ;
+print "      hsttbx   = " . $datahashref->{"HASTBX"}     . "\n" ;
     # DERIVED
     ($objsectionnum = $datahashref->{"ONUM"}) =~ s/\..*$// ;
     $isin3orabove = $objsectionnum >= 3 ;
@@ -128,7 +128,7 @@ print "   isin3orabove  = $isin3orabove\n" ;
             and (not $datahashref->{"ISDELETED"})
             and ($datahashref->{"PROJID"})
             );
-print ("      isreqt   = " . $datahashref->{"ISREQUIREMENT"}     . "\n" ;
+print "      isreqt   = " . $datahashref->{"ISREQUIREMENT"}     . "\n" ;
 
     return $datahashref ;
 }
