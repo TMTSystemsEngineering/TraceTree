@@ -274,7 +274,7 @@ foreach $node (sort keys %metricsdb)
     
     # First do the common stuff.  Little enough of that.
     # module name is the key of the hash
-    $mmref->{"NUM_OBJECTS"}++ ;
+    $mmref->{"NUM_OBJECTS"}++ if $noderef{"ISREQUIREMENT"} ;
     $mmref->{"LINKS_WITHIN_MODULE"}++ if $noderef{"LINK_TO_SAME_MOD"} ;
     $mmref->{"TBXes"}++ if $noderef{"HASTBX"} ;
     $mmref->{"DATE_LAST_MOD"} = $noderef{"LINK_TO_SAME_MOD"} 
