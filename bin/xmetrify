@@ -257,10 +257,9 @@ foreach $node (sort keys %metricsdb)
     ($isDRD, $isICD, $isVAM) = getModTypeBooleans($node) ;
     
 
-$isrequirement = $noderef->{"ISREQUIREMENT"} ;
-$str=$node  ;
-foreach $k (sort keys %$noderef) { $str .= "  $k->" . $noderef->{$k} ; }
-print "$str\n" ;
+# $str=$node  ;
+# foreach $k (sort keys %$noderef) { $str .= "  $k->" . $noderef->{$k} ; }
+# print "$str\n" ;
 
     if (!defined($modmetrics{$modname}))
     {
@@ -270,7 +269,7 @@ print "$str\n" ;
         elsif ($isICD) { push @ICDlist, $modname ; }
         elsif ($isVAM) { push @VAMlist, $modname ; }
         else { warn "UNKNOWN MODULE TYPE FOR object $modname\n" ; }
-print "started new accumulator for $modname\n" ;
+# print "started new accumulator for $modname\n" ;
     }
     else
     {
@@ -279,8 +278,8 @@ print "started new accumulator for $modname\n" ;
     
     # First do the common stuff.  Little enough of that.
     # module name is the key of the hash
-$isreqt = $noderef->{"ISREQUIREMENT"} ;
-print "noderef isreqt $isreqt\n" ; 
+# $isreqt = $noderef->{"ISREQUIREMENT"} ;
+# print "noderef isreqt $isreqt\n" ; 
     $mmref->{"NUM_OBJECTS"}++ if $noderef->{"ISREQUIREMENT"} ;
     $mmref->{"LINKS_WITHIN_MODULE"}++ if $noderef->{"LINK_TO_SAME_MOD"} ;
     $mmref->{"TBXes"}++ if $noderef->{"HASTBX"} ;
@@ -333,7 +332,6 @@ print H "<table border=1>\n" ;
 print H "<tr><th>" . join("</th><th>", @drdheaders) . "</th></tr>\n" ;
 foreach $modname (@DRDlist)
 {
-print "In DRDlist loop, modname = $modname\n" ;
     $mmref = $modmetrics{$modname};
     @row = () ;
     ($pmodname = $modname) =~ s/^ttr\/$pname\/// ;

@@ -92,7 +92,7 @@ $updatedcount = 0 ;
 $nxmls = scalar @nodelist ;
 foreach $node (@nodelist)
 {
-print "DOING NODE $node\n" ;
+# print "DOING NODE $node\n" ;
   $xmlfilename = $node . ".xml" ;
   $attrfilename = $node . ".attr" ;
   $perttxtfilename = $node . ".perttxt" ;    # "Pertinent Text" will include 
