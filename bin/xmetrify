@@ -257,8 +257,11 @@ foreach $node (sort keys %metricsdb)
     ($isDRD, $isICD, $isVAM) = getModTypeBooleans($node) ;
     
 
-    $isrequirement = $noderef->{"ISREQUIREMENT"} ;
-print "node=$node modname = $modname   isreqt=$isrequirement\n" ;
+$isrequirement = $noderef->{"ISREQUIREMENT"} ;
+$str=$node  ;
+foreach $k (sort keys %$noderef) { $str .= "  $k->" . $noderef->{$k} ; }
+print "$str\n" ;
+
     if (!defined($modmetrics{$modname}))
     {
         $mmref = initModMetrics() ;
