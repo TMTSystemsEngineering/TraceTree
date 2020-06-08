@@ -282,10 +282,10 @@ print "started new accumulator for $modname\n" ;
 $isreqt = $noderef->{"ISREQUIREMENT"} ;
 print "noderef isreqt $isreqt\n" ; 
     $mmref->{"NUM_OBJECTS"}++ if $noderef->{"ISREQUIREMENT"} ;
-    $mmref->{"LINKS_WITHIN_MODULE"}++ if $noderef{"LINK_TO_SAME_MOD"} ;
-    $mmref->{"TBXes"}++ if $noderef{"HASTBX"} ;
-    $mmref->{"DATE_LAST_MOD"} = $noderef{"LINK_TO_SAME_MOD"} 
-            if $noderef{"LINK_TO_SAME_MOD"} gt $mmref{"DATE_LAST_MOD"} ;
+    $mmref->{"LINKS_WITHIN_MODULE"}++ if $noderef->{"LINK_TO_SAME_MOD"} ;
+    $mmref->{"TBXes"}++ if $noderef->{"HASTBX"} ;
+    $mmref->{"DATE_LAST_MOD"} = $noderef->{"LINK_TO_SAME_MOD"} 
+            if $noderef->{"LINK_TO_SAME_MOD"} gt $mmref{"DATE_LAST_MOD"} ;
 
     # OK, now we differentiate by type
     if ($isDRD)
