@@ -104,7 +104,7 @@ open L, $linksfile or die "Couldn't open $linksfile for reading: $!\n" ;
 # DERIVED from above
 #    ISREQUIREMENT  is in section 3 or above, 
 #                   is not deleted, has projid not blank
-#    CHILD_IS_DRDIRD
+#    CHILD_IS_DRDICD
 #    CHILD_IS_REQT
 #    ERROR_ICD_ICD_LINK
 #    ERROR_NO_STYPE
@@ -114,7 +114,7 @@ open L, $linksfile or die "Couldn't open $linksfile for reading: $!\n" ;
 #    ERROR_WRONG_WAY_VLINK
 #    PARENT_IS_DRDICD
 #    PARENT_IS_REQT
-#    VA_VERIFIES_DRDIRD
+#    VA_VERIFIES_DRDICD
 
 foreach $node (sort keys %metricsdb)
 {
@@ -203,16 +203,16 @@ while (<L>)
         # there .  Should we distinguish VA_VERIFIES vs VI_VERIFIED_BY ?
         if  ($tisDRD)
         {
-            if      ($sisDRD) { $tnoderef->{"CHILD_IS_DRDIRD"}++ ; }
-            elsif   ($sisICD) { $tnoderef->{"CHILD_IS_DRDIRD"}++ ; }
-            elsif   ($sisVAM) { $tnoderef->{"VA_VERIFIES_DRDIRD"}++ ; }
+            if      ($sisDRD) { $tnoderef->{"CHILD_IS_DRDICD"}++ ; }
+            elsif   ($sisICD) { $tnoderef->{"CHILD_IS_DRDICD"}++ ; }
+            elsif   ($sisVAM) { $tnoderef->{"VA_VERIFIES_DRDICD"}++ ; }
             else              { $tnoderef->{"ERROR_NO_STYPE"}++ ; }
         }
         elsif ($tisICD)
         {
             if      ($sisDRD) { $tnoderef->{"CHILD_IS_REQT"}++ ; }
             elsif   ($sisICD) { $tnoderef->{"ERROR_ICD_ICD_LINK"}++ ; }
-            elsif   ($sisVAM) { $tnoderef->{"VA_VERIFIES_DRDIRD"}++ ; }
+            elsif   ($sisVAM) { $tnoderef->{"VA_VERIFIES_DRDICD"}++ ; }
             else              { $tnoderef->{"ERROR_NO_STYPE"}++ ; }
         }
         elsif ($tisVAM)
