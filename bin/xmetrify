@@ -149,6 +149,10 @@ while (<L>)
                 and defined($objmetrics{$tnode}) ;
     $snoderef = $objmetrics{$snode} ;
     $tnoderef = $objmetrics{$tnode} ;
+    # TRY THIS OUT: don't count links unless both are requirements.
+    # NOT SURE HOW WELL THAT WORKS FOR VAMs
+    next unless     $snoderef->{"ISREQUIREMENT"}
+                and $tnoderef->{"ISREQUIREMENT"}  ;
     # print "snode= $snode tnode=$tnode snoderef=$snoderef tnoderef=$tnoderef\n" ;
     #    if (!defined($objmetrics{$snode}) or !defined($objmetrics{$tnode})) ;
     
