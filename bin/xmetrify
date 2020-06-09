@@ -123,7 +123,7 @@ foreach $node (sort keys %metricsdb)
     # getnodedata should return a hash with all the node-specific      #
     # data in it, whether straight from the database or derived        #
     ####################################################################
-print "xmetrify: node=$node noderecord=$noderecord\n" ;
+# print "xmetrify: node=$node noderecord=$noderecord\n" ;
     $nodedataref = getnodedata ($noderecord) ;
     $objmetrics{$node} = $nodedataref ;
 }
@@ -149,17 +149,22 @@ while (<L>)
                 and defined($objmetrics{$tnode}) ;
     $snoderef = $objmetrics{$snode} ;
     $tnoderef = $objmetrics{$tnode} ;
-    # TRY THIS OUT: don't count links unless both are requirements.
-    # NOT SURE HOW WELL THAT WORKS FOR VAMs
+    ####################################################################
+    # TRY THIS OUT: don't count links unless both are requirements.    #
+    # NOT SURE HOW WELL THAT WORKS FOR VAMs                            #
+    ####################################################################
     next unless     $snoderef->{"ISREQUIREMENT"}
                 and $tnoderef->{"ISREQUIREMENT"}  ;
     # print "snode= $snode tnode=$tnode snoderef=$snoderef tnoderef=$tnoderef\n" ;
     #    if (!defined($objmetrics{$snode}) or !defined($objmetrics{$tnode})) ;
     
-    # OOPS we need to count things only if legit requirements.  Right?
-    # but remember, VAs for the most part do not have TMT IDs.  So 
-    # they're legit without having a TMT ID.  Shoot.  So first figure 
-    # out if each is legit requirement, interface, or VA 
+    ####################################################################
+    # OOPS we need to count things only if legit requirements.         #
+    # Right? but remember, VAs for the most part do not have TMT IDs.  #
+    # So they're legit without having a TMT ID.  Shoot.  So first      #
+    # figure out if each is legit requirement, interface, or VA WE     #
+    # NEED TO ACCOUNT FOR ISREQUIREMENT NOT APPLYING TO VAs            #
+    ####################################################################
     ($sisDRD, $sisICD, $sisVAM) = getModTypeBooleans($smod) ;
     ($tisDRD, $tisICD, $tisVAM) = getModTypeBooleans($tmod) ;
     
