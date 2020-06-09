@@ -119,11 +119,11 @@ open L, $linksfile or die "Couldn't open $linksfile for reading: $!\n" ;
 foreach $node (sort keys %metricsdb)
 {
     $noderecord = $metricsdb{$node} ;
-# print "xmetrify: node=$node nodemetrics=$nodemetrics\n" ;
     ####################################################################
     # getnodedata should return a hash with all the node-specific      #
     # data in it, whether straight from the database or derived        #
     ####################################################################
+print "xmetrify: node=$node noderecord=$noderecord\n" ;
     $nodedataref = getnodedata ($noderecord) ;
     $objmetrics{$node} = $nodedataref ;
 }
