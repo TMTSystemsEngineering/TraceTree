@@ -305,9 +305,10 @@ foreach $node (sort keys %metricsdb)
     # module name is the key of the hash
 # $isreqt = $noderef->{"ISREQUIREMENT"} ;
 # print "noderef isreqt $isreqt\n" ; 
-    $mmref->{"NUM_REQTS"}++ if $noderef->{"ISREQUIREMENT"} ;
+    $mmref->{"NUM_OBJS"}++            if $noderef->{"IS3ORABOVE"} ;
+    $mmref->{"NUM_REQTS"}++           if $noderef->{"ISREQUIREMENT"} ;
     $mmref->{"LINKS_WITHIN_MODULE"}++ if $noderef->{"LINK_TO_SAME_MOD"} ;
-    $mmref->{"TBXes"}++ if $noderef->{"HASTBX"} ;
+    $mmref->{"TBXes"}++               if $noderef->{"HASTBX"} ;
     $mmref->{"DATE_LAST_MOD"} = $noderef->{"MODDATE"} 
             if $noderef->{"MODDATE"} gt $mmref{"DATE_LAST_MOD"} ;
 
@@ -349,6 +350,34 @@ print H <<EOX;
 EOX
 
 print H "<H3>DRD METRICS</H3>\n" ;
+@drdheaders = ("Module", "# OBJS 3+", "# Requirements", 
+        "# Requirements with Parents", "# Requirements with Children", 
+        "# Links within Module",
+        "# Requirements with TBx", "# Links from VAM",
+        "Date of Last Modification" ) ;
+print H "<table border=1>\n" ;
+print H "<tr><th>" . join("</th><th>", @drdheaders) . "</th></tr>\n" ;
+foreach $modname (@DRDlist)
+{
+    $mmref = $modmetrics{$modname};
+    @row = () ;
+    ($pmodname = $modname) =~ s/^ttr\/$pname\/// ;
+    
+    push @row, "$pmodname" ;
+    push @row, $mmref->{"NUM_OBJS"} ;
+    push @row, $mmref->{"NUM_REQTS"} ;
+    push @row, $mmref->{"REQS_WITH_PARENTS"} ;
+    push @row, $mmref->{"REQS_WITH_CHILDREN"} ;
+    push @row, $mmref->{"LINKS_WITHIN_MODULE"} ;
+    push @row, $mmref->{"TBXes"} ;
+    push @row, $mmref->{"VA_LINKS"} ;
+    push @row, $mmref->{"DATE_LAST_MOD"} ;
+    # only the first row is not right-aligned, OK?
+    print H "<tr><td>" . join ("</td><td align=right>", @row) . "</td></tr>\n" ;
+}
+print H "</table>\n" ;
+
+print H "<H3>ICD METRICS</H3>\n" ;
 @drdheaders = ("Module", "# Requirements", "# Requirements with Parents",
         "# Requirements with Children", "# Links within Module",
         "# Requirements with TBx", "# Links from VAM",
@@ -373,6 +402,8 @@ foreach $modname (@DRDlist)
     print H "<tr><td>" . join ("</td><td align=right>", @row) . "</td></tr>\n" ;
 }
 print H "</table>\n" ;
+
+
 print H "</body></html>\n" ;
 close H ;
 
@@ -406,15 +437,16 @@ sub initModMetrics # ()
 {
     my $mmref = { } ;
     
-    $mmref->{"NUM_REQTS"} = 0 ;
-    $mmref->{"REQS_WITH_PARENTS"} = 0 ;
-    $mmref->{"REQS_WITH_CHILDREN"} = 0 ;
+    $mmref->{"NUM_OBJS"}                = 0 ;
+    $mmref->{"NUM_REQTS"}               = 0 ;
+    $mmref->{"REQS_WITH_PARENTS"}       = 0 ;
+    $mmref->{"REQS_WITH_CHILDREN"}      = 0 ;
     $mmref->{"INTERFACES_WITH_PARENTS"} = 0 ;
-    $mmref->{"VAS_WITH_PARENTS"} = 0 ;
-    $mmref->{"LINKS_WITHIN_MODULE"} = 0 ;
-    $mmref->{"TBXes"} = 0 ;
-    $mmref->{"VA_LINKS"} = 0 ;
-    $mmref->{"DATE_LAST_MOD"} = "1971-01-01 00:00:01" ;
+    $mmref->{"VAS_WITH_PARENTS"}        = 0 ;
+    $mmref->{"LINKS_WITHIN_MODULE"}     = 0 ;
+    $mmref->{"TBXes"}                   = 0 ;
+    $mmref->{"VA_LINKS"}                = 0 ;
+    $mmref->{"DATE_LAST_MOD"}           = "1971-01-01 00:00:01" ;
     return $mmref ;
 }
     

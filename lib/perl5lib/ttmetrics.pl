@@ -81,6 +81,7 @@ sub makemdbrecord # ($moddate,$onum,$projid,$isshall,$isdeleted,$hastbx)
 #    ISDELETED   is deleted: text starts with "Deleted:"
 #    HASTBX      has TBD or TBC or TBS in the text, as a word
 # DERIVED
+#    IS3ORABOVE     is in section 3 or above
 #    ISREQUIREMENT  is in section 3 or above, 
 #                   is not deleted, has projid not blank
 #    LINK_TO_SAME_MOD
@@ -122,6 +123,7 @@ sub getnodedata # ($mdbrecord)
     $isin3orabove = $objsectionnum >= 3 ;
 # print "   objsectionnum = $objsectionnum\n" ;
 # print "   isin3orabove  = $isin3orabove\n" ;
+    $datahashref->{"IS3ORABOVE"} = $isin3orabove ;
     $datahashref->{"ISREQUIREMENT"} = 
             (   
                 $isin3orabove 
