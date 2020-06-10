@@ -305,7 +305,7 @@ foreach $node (sort keys %metricsdb)
     # module name is the key of the hash
 # $isreqt = $noderef->{"ISREQUIREMENT"} ;
 # print "noderef isreqt $isreqt\n" ; 
-    $mmref->{"NUM_OBJECTS"}++ if $noderef->{"ISREQUIREMENT"} ;
+    $mmref->{"NUM_REQTS"}++ if $noderef->{"ISREQUIREMENT"} ;
     $mmref->{"LINKS_WITHIN_MODULE"}++ if $noderef->{"LINK_TO_SAME_MOD"} ;
     $mmref->{"TBXes"}++ if $noderef->{"HASTBX"} ;
     $mmref->{"DATE_LAST_MOD"} = $noderef->{"MODDATE"} 
@@ -362,7 +362,7 @@ foreach $modname (@DRDlist)
     ($pmodname = $modname) =~ s/^ttr\/$pname\/// ;
     
     push @row, "$pmodname" ;
-    push @row, $mmref->{"NUM_OBJECTS"} ;
+    push @row, $mmref->{"NUM_REQTS"} ;
     push @row, $mmref->{"REQS_WITH_PARENTS"} ;
     push @row, $mmref->{"REQS_WITH_CHILDREN"} ;
     push @row, $mmref->{"LINKS_WITHIN_MODULE"} ;
@@ -406,7 +406,7 @@ sub initModMetrics # ()
 {
     my $mmref = { } ;
     
-    $mmref->{"NUM_OBJECTS"} = 0 ;
+    $mmref->{"NUM_REQTS"} = 0 ;
     $mmref->{"REQS_WITH_PARENTS"} = 0 ;
     $mmref->{"REQS_WITH_CHILDREN"} = 0 ;
     $mmref->{"INTERFACES_WITH_PARENTS"} = 0 ;
