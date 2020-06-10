@@ -150,16 +150,17 @@ while (<L>)
     $snoderef = $objmetrics{$snode} ;
     $tnoderef = $objmetrics{$tnode} ;
     
-    $dodebug = ($smod =~ /DRD_SOSS/) or ($tmod =~ /DRD_SOSS/) ;
+    # $dodebug = ($smod =~ /DRD_SOSS/) ; # or ($tmod =~ /DRD_SOSS/) ;
+    $dodebug = 0 ;
     if ($dodebug)
     {
         $str = "" ;
-        print "smod $smod : ") ;
-        foreach $k (sort keys %$snoderef) { $str .= "  $k->" . $snoderef->{$k} ; }
+        print "smod $smod $snum\t" ;
+        foreach $k (sort keys %$snoderef) { $str .= "\t$k->" . $snoderef->{$k} ; }
         print "$str\n" ;
         $str = "" ;
-        print "tmod $tmod : ") ;
-        foreach $k (sort keys %$tnoderef) { $str .= "  $k->" . $tnoderef->{$k} ; }
+        print "  tmod $tmod $tnum\t" ;
+        foreach $k (sort keys %$tnoderef) { $str .= "\t$k->" . $tnoderef->{$k} ; }
         print "$str\n" ;
     }
 
@@ -348,7 +349,7 @@ print H <<EOX;
 EOX
 
 print H "<H3>DRD METRICS</H3>\n" ;
-@drdheaders = ("Module", "# Objects", "# Requirements with Parents",
+@drdheaders = ("Module", "# Requirements", "# Requirements with Parents",
         "# Requirements with Children", "# Links within Module",
         "# Requirements with TBx", "# Links from VAM",
         "Date of Last Modification" ) ;
