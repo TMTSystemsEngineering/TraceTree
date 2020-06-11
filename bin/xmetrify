@@ -350,7 +350,7 @@ print H <<EOX;
 EOX
 
 print H "<H3>DRD METRICS</H3>\n" ;
-@drdheaders = ("Module", "# OBJS 3+", "# Requirements", 
+@drdheaders = ("Module", "# Objects 3+", "# Requirements", 
         "# Requirements with Parents", "# Requirements with Children", 
         "# Links within Module",
         "# Requirements with TBx", "# Links from VAM",
@@ -382,8 +382,9 @@ print H "<H3>ICD METRICS</H3>\n" ;
         "# Requirements with Children", "# Links within Module",
         "# Requirements with TBx", "# Links from VAM",
         "Date of Last Modification" ) ;
-print H "<table border=1>\n" ;
-print H "<tr><th>" . join("</th><th>", @drdheaders) . "</th></tr>\n" ;
+print H "<p>TBD</p>\n" ;
+######## print H "<table border=1>\n" ;
+######## print H "<tr><th>" . join("</th><th>", @drdheaders) . "</th></tr>\n" ;
 foreach $modname (@DRDlist)
 {
     $mmref = $modmetrics{$modname};
@@ -399,9 +400,9 @@ foreach $modname (@DRDlist)
     push @row, $mmref->{"VA_LINKS"} ;
     push @row, $mmref->{"DATE_LAST_MOD"} ;
     # only the first row is not right-aligned, OK?
-    print H "<tr><td>" . join ("</td><td align=right>", @row) . "</td></tr>\n" ;
+    ########### print H "<tr><td>" . join ("</td><td align=right>", @row) . "</td></tr>\n" ;
 }
-print H "</table>\n" ;
+######### print H "</table>\n" ;
 
 
 print H "</body></html>\n" ;
