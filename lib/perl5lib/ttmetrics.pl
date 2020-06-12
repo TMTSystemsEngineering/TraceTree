@@ -99,6 +99,8 @@ sub makemdbrecord # ($moddate,$onum,$projid,$isshall,$isdeleted,$hastbx)
 #    VA_VERIFIES_DRDIRD
 #    VA_VERIFIES_REQT
 
+# consider modifying to include nodename and/or modname so we can 
+# separate requirements and VAs
 sub getnodedata # ($mdbrecord)
 {
     my ($mdbrecord) = @_ ;
